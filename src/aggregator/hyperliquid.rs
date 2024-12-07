@@ -16,6 +16,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use super::traits::ExchangeAggregator;
+use serde::Deserialize;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum AggregatorError {
+    #[error("Asset not found: {0}")]
+    AssetNotFound(String),
+}
 
 pub struct HyperliquidAggregator {
     client: Arc<Mutex<InfoClient>>,
@@ -23,6 +31,7 @@ pub struct HyperliquidAggregator {
     current_symbol: Option<String>,
     current_orderbook: Arc<Mutex<Option<OrderBook>>>,
     current_summary: Arc<Mutex<Option<MarketSummary>>>,
+    universe_cache: Arc<Mutex<Option<MetaResponse>>>,
 }
 
 impl std::fmt::Debug for HyperliquidAggregator {
@@ -32,6 +41,7 @@ impl std::fmt::Debug for HyperliquidAggregator {
             .field("current_symbol", &self.current_symbol)
             .field("current_orderbook", &self.current_orderbook)
             .field("current_summary", &self.current_summary)
+            .field("universe_cache", &self.universe_cache)
             .finish_non_exhaustive()
     }
 }
@@ -46,6 +56,7 @@ impl ExchangeAggregator for HyperliquidAggregator {
             current_symbol: None,
             current_orderbook: Arc::new(Mutex::new(None)),
             current_summary: Arc::new(Mutex::new(None)),
+            universe_cache: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -147,58 +158,66 @@ impl ExchangeAggregator for HyperliquidAggregator {
     }
 
     async fn get_market_summary(&self, symbol: &str) -> Result<MarketSummary> {
-        let meta = self.client.lock().await.meta().await?;
-        let all_mids = self.client.lock().await.all_mids().await?;
+        let client = reqwest::Client::new();
+        let response = client.post("https://api.hyperliquid.xyz/info")
+            .json(&serde_json::json!({
+                "type": "metaAndAssetCtxs"
+            }))
+            .send()
+            .await?;
         
-        let price = all_mids.get(symbol)
-            .ok_or_else(|| anyhow::anyhow!("Price not found"))?
-            .parse()
-            .map_err(|e| anyhow::anyhow!("Failed to parse price: {}", e))?;
-
-        // Get funding rate (last 24h)
-        let now = Utc::now().timestamp_millis() as u64;
-        let day_ago = now - (24 * 60 * 60 * 1000);
-        let funding = self.client.lock().await.funding_history(symbol.to_string(), day_ago, Some(now)).await?;
-        let funding_rate = funding.last()
-            .map(|f| f.funding_rate.parse::<f64>().unwrap_or(0.0))
-            .unwrap_or(0.0);
-
-        // Calculate 24h volume from recent trades
-        let recent_trades = self.client.lock().await.recent_trades(symbol.to_string()).await?;
-        let volume_24h = recent_trades.iter()
-            .filter(|trade| trade.time >= day_ago)
-            .map(|trade| {
-                let price = trade.px.parse::<f64>().unwrap_or(0.0);
-                let size = trade.sz.parse::<f64>().unwrap_or(0.0);
-                price * size
-            })
-            .sum();
-
-        // Get open interest from user state aggregation
-        let _l2_snapshot = self.client.lock().await.l2_snapshot(symbol.to_string()).await?;
-        let open_interest = meta.universe.iter()
-            .find(|a| a.name == symbol)
-            .map(|_| {
-                // For now returning volume as a proxy since open interest 
-                // requires additional API calls to aggregate user positions
-                volume_24h
-            })
-            .unwrap_or(0.0);
-
+        let response_text = response.text().await?;
+        let data: Vec<serde_json::Value> = serde_json::from_str(&response_text)?;
+        
+        // Get the asset contexts from the second element of the array
+        let asset_ctxs = &data[1];
+        
+        // Find the index of our symbol in the universe (first element)
+        let universe: Vec<AssetMeta> = serde_json::from_value(data[0]["universe"].clone())?;
+        let symbol_index = universe.iter()
+            .position(|asset| asset.name == symbol)
+            .ok_or_else(|| anyhow::anyhow!("Symbol not found"))?;
+        
+        // Get the corresponding asset context
+        let asset_ctx: AssetContext = serde_json::from_value(asset_ctxs[symbol_index].clone())?;
+        
         Ok(MarketSummary {
             symbol: symbol.to_string(),
-            price,
-            volume_24h,
-            open_interest,
-            funding_rate,
+            price: asset_ctx.mark_price.parse()?,
+            volume_24h: asset_ctx.volume_24h.parse()?,
+            open_interest: asset_ctx.open_interest.parse()?,
+            funding_rate: asset_ctx.funding_rate.parse()?,
         })
     }
 
     async fn get_leverage_info(&self, symbol: &str) -> Result<LeverageInfo> {
+        // Try to get from cache first
+        let mut cache = self.universe_cache.lock().await;
+        
+        // If cache is empty or expired, fetch new data
+        if cache.is_none() {
+            let client = reqwest::Client::new();
+            let response = client.post("https://api.hyperliquid.xyz/info")
+                .json(&serde_json::json!({
+                    "type": "meta"
+                }))
+                .send()
+                .await?;
+            
+            let response_text = response.text().await?;
+            let meta: MetaResponse = serde_json::from_str(&response_text)?;
+            *cache = Some(meta);
+        }
+
+        // Find the asset in the universe
+        let asset = cache.as_ref()
+            .and_then(|meta| meta.universe.iter().find(|asset| asset.name == symbol))
+            .ok_or_else(|| AggregatorError::AssetNotFound(format!("Symbol not found: {}", symbol)))?;
+
         Ok(LeverageInfo {
             exchange: "Hyperliquid".to_string(),
             symbol: symbol.to_string(),
-            max_leverage: 50.0,  // Fixed max leverage
+            max_leverage: asset.max_leverage as f64,
         })
     }
 
@@ -284,4 +303,40 @@ fn convert_levels(levels: &[hyperliquid_rust_sdk::Level]) -> Vec<Level> {
             orders: level.n,
         })
         .collect()
+}
+
+#[derive(Debug, Deserialize)]
+struct MetaResponse {
+    universe: Vec<AssetMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetMeta {
+    name: String,
+    #[serde(rename = "maxLeverage")]
+    max_leverage: u32,
+    #[serde(rename = "szDecimals")]
+    sz_decimals: u8,
+    #[serde(rename = "onlyIsolated", default)]
+    only_isolated: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct MetaAndAssetCtxsResponse {
+    #[serde(flatten)]
+    meta: MetaResponse,
+    #[serde(flatten)]
+    asset_ctxs: Vec<AssetContext>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetContext {
+    #[serde(rename = "openInterest")]
+    open_interest: String,
+    #[serde(rename = "markPx")]
+    mark_price: String,
+    #[serde(rename = "funding")]
+    funding_rate: String,
+    #[serde(rename = "dayNtlVlm")]
+    volume_24h: String,
 }

@@ -19,6 +19,7 @@ use super::types::{OrderBook, MarketSummary, LeverageInfo, Level};
 use tokio::spawn;
 use crate::error::AggregatorError;
 use std::collections::HashMap;
+use super::hyperliquid::HyperliquidAggregator;
 
 #[derive(Debug)]
 pub struct DydxAggregator {
@@ -28,6 +29,7 @@ pub struct DydxAggregator {
     current_leverage: Arc<Mutex<Option<LeverageInfo>>>,
     current_symbol: Option<String>,
     available_assets: Arc<Mutex<Vec<String>>>,
+    hl_aggregator: Arc<HyperliquidAggregator>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +73,7 @@ impl ExchangeAggregator for DydxAggregator {
             current_leverage: Arc::new(Mutex::new(None)),
             current_symbol: None,
             available_assets: Arc::new(Mutex::new(Vec::new())),
+            hl_aggregator: Arc::new(HyperliquidAggregator::new(testnet).await?),
         })
     }
 
@@ -184,11 +187,14 @@ impl ExchangeAggregator for DydxAggregator {
         }
     }
 
+    // using same max_leverage as hyperliquid cause dydx doesnt have a way to fetch it, theyre usually the same
     async fn get_leverage_info(&self, symbol: &str) -> Result<LeverageInfo> {
+        let hl_leverage = self.hl_aggregator.get_leverage_info(symbol).await?;
+        
         Ok(LeverageInfo {
             exchange: "dYdX".to_string(),
             symbol: symbol.to_string(),
-            max_leverage: 20.0,
+            max_leverage: hl_leverage.max_leverage,
         })
     }
 

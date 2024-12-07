@@ -105,37 +105,47 @@ impl DerivativesAggregator {
     }
 
     pub async fn display_aggregated_data(&mut self, symbol: &str) {
-        // Clear screen from saved position
         print!("\x1B[u\x1B[J");
         
         println!("Aggregated Market Data for {} (Press Ctrl+C to exit)\n", symbol);
         
+        // Get leverage info for each exchange
+        let mut leverages = HashMap::new();
+        for (name, exchange) in &self.exchanges {
+            match exchange.get_leverage_info(symbol).await {
+                Ok(leverage) => {
+                    leverages.insert(name.clone(), leverage.max_leverage);
+                }
+                Err(e) => {
+                    println!("Failed to get leverage for {}: {}", name, e);
+                }
+            }
+        }
+        
         // Market Summaries
         println!("Market Summaries:");
-        println!("{:<12} {:<14} {:<16} {:<16} {:>12}", 
-            "Exchange", "Price", "24h Volume", "Open Interest", "Funding Rate");
+        println!("{:<12} {:<14} {:<14} {:<16} {:>12}", 
+            "Exchange", "Price", "Max Leverage", "Open Interest", "Funding Rate");
         println!("{:-<74}", "");
         
         for (name, exchange) in &self.exchanges {
             match exchange.get_market_summary(symbol).await {
                 Ok(summary) => {
-                    // Update last known good data
                     self.last_known_summaries.insert(name.clone(), summary.clone());
-                    println!("{:<12} ${:<13.2} ${:<15.2} ${:<15.2} {:>11.4}%",
+                    println!("{:<12} ${:<13.2} {:<13.0}x ${:<15.2} {:>11.4}%",
                         name,
                         summary.price,
-                        summary.volume_24h,
+                        leverages.get(name).unwrap_or(&20.0),
                         summary.open_interest,
                         summary.funding_rate * 100.0
                     );
                 }
                 Err(_) => {
-                    // Use last known good data if available
                     if let Some(last_summary) = self.last_known_summaries.get(name) {
-                        println!("{:<12} ${:<13.2} ${:<15.2} ${:<15.2} {:>11.4}%",
+                        println!("{:<12} ${:<13.2} {:<13.0}x ${:<15.2} {:>11.4}%",
                             name,
                             last_summary.price,
-                            last_summary.volume_24h,
+                            leverages.get(name).unwrap_or(&20.0),
                             last_summary.open_interest,
                             last_summary.funding_rate * 100.0
                         );
@@ -209,30 +219,41 @@ impl DerivativesAggregator {
     }
 
     pub async fn display_market_summaries(&mut self, symbol: &str) {
-        println!("{:<12} {:<14} {:<16} {:<16} {:>12}", 
-            "Exchange", "Price", "24h Volume", "Open Interest", "Funding Rate");
+        // Get leverage info for each exchange separately
+        let mut leverages = HashMap::new();
+        for (name, exchange) in &self.exchanges {
+            if let Ok(leverage) = exchange.get_leverage_info(symbol).await {
+                leverages.insert(name.clone(), leverage.max_leverage);
+            }
+        }
+        
+        // Market Summaries header
+        println!("Market Summaries:");
+        println!("{:<12} {:<14} {:<14} {:<16} {:>12}", 
+            "Exchange", "Price", "Max Leverage", "Open Interest", "Funding Rate");
         println!("{:-<74}", "");
         
+        // Display market data with stored leverage values
         for (name, exchange) in &self.exchanges {
             match exchange.get_market_summary(symbol).await {
                 Ok(summary) => {
-                    // Update last known good data
                     self.last_known_summaries.insert(name.clone(), summary.clone());
-                    println!("{:<12} ${:<13.2} ${:<15.2} ${:<15.2} {:>11.4}%",
+                    let leverage = leverages.get(name).unwrap_or(&20.0);
+                    println!("{:<12} ${:<13.2}      {:<2}x        ${:<15.2} {:>11.4}%",
                         name,
                         summary.price,
-                        summary.volume_24h,
+                        leverage,
                         summary.open_interest,
                         summary.funding_rate * 100.0
                     );
                 }
                 Err(_) => {
-                    // Use last known good data if available
                     if let Some(last_summary) = self.last_known_summaries.get(name) {
-                        println!("{:<12} ${:<13.2} ${:<15.2} ${:<15.2} {:>11.4}%",
-                            name,
+                        let leverage = leverages.get(name).unwrap_or(&20.0);
+                        println!("{:<12} ${:<13.2}      {:<2}x        ${:<15.2} {:>11.4}%",
+                        name,
                             last_summary.price,
-                            last_summary.volume_24h,
+                            leverage,
                             last_summary.open_interest,
                             last_summary.funding_rate * 100.0
                         );
