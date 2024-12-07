@@ -15,7 +15,7 @@ use types::{LeverageInfo, OrderBook, MarketSummary, Level};
 use std::io::Write;
 use std::future::Future;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Exchange {
     Dydx(DydxAggregator),
     Hyperliquid(HyperliquidAggregator),
@@ -31,13 +31,6 @@ impl ExchangeAggregator for Exchange {
         match self {
             Exchange::Dydx(e) => e.start_market_updates(symbol).await,
             Exchange::Hyperliquid(e) => e.start_market_updates(symbol).await,
-        }
-    }
-
-    async fn display_market_data(&self) {
-        match self {
-            Exchange::Dydx(e) => e.display_market_data().await,
-            Exchange::Hyperliquid(e) => e.display_market_data().await,
         }
     }
 
@@ -79,7 +72,7 @@ impl ExchangeAggregator for Exchange {
 
 pub struct DerivativesAggregator {
     config: AggregatorConfig,
-    exchanges: HashMap<String, Exchange>,
+    pub exchanges: HashMap<String, Exchange>,
     last_known_summaries: HashMap<String, types::MarketSummary>,
 }
 
@@ -123,7 +116,6 @@ impl DerivativesAggregator {
         }
         
         // Market Summaries
-        println!("Market Summaries:");
         println!("{:<12} {:<14} {:<14} {:<16} {:>12}", 
             "Exchange", "Price", "Max Leverage", "Open Interest", "Funding Rate");
         println!("{:-<74}", "");
@@ -219,98 +211,110 @@ impl DerivativesAggregator {
     }
 
     pub async fn display_market_summaries(&mut self, symbol: &str) {
-        // Get leverage info for each exchange separately
-        let mut leverages = HashMap::new();
+        // Update market summaries before displaying
+        let mut futures = Vec::new();
+        
         for (name, exchange) in &self.exchanges {
-            if let Ok(leverage) = exchange.get_leverage_info(symbol).await {
-                leverages.insert(name.clone(), leverage.max_leverage);
+            let name = name.clone();
+            let exchange = exchange.clone();
+            let future = async move {
+                if let Ok(summary) = exchange.get_market_summary(symbol).await {
+                    Some((name, summary))
+                } else {
+                    None
+                }
+            };
+            futures.push(future);
+        }
+
+        // Wait for all updates concurrently
+        let results = futures::future::join_all(futures).await;
+        for result in results {
+            if let Some((name, summary)) = result {
+                self.last_known_summaries.insert(name, summary);
             }
         }
-        
-        // Market Summaries header
+
+        // Display the updated data
         println!("Market Summaries:");
         println!("{:<12} {:<14} {:<14} {:<16} {:>12}", 
             "Exchange", "Price", "Max Leverage", "Open Interest", "Funding Rate");
         println!("{:-<74}", "");
         
-        // Display market data with stored leverage values
-        for (name, exchange) in &self.exchanges {
-            match exchange.get_market_summary(symbol).await {
-                Ok(summary) => {
-                    self.last_known_summaries.insert(name.clone(), summary.clone());
-                    let leverage = leverages.get(name).unwrap_or(&20.0);
-                    println!("{:<12} ${:<13.2}      {:<2}x        ${:<15.2} {:>11.4}%",
-                        name,
-                        summary.price,
-                        leverage,
-                        summary.open_interest,
-                        summary.funding_rate * 100.0
-                    );
-                }
-                Err(_) => {
-                    if let Some(last_summary) = self.last_known_summaries.get(name) {
-                        let leverage = leverages.get(name).unwrap_or(&20.0);
-                        println!("{:<12} ${:<13.2}      {:<2}x        ${:<15.2} {:>11.4}%",
-                        name,
-                            last_summary.price,
-                            leverage,
-                            last_summary.open_interest,
-                            last_summary.funding_rate * 100.0
-                        );
-                    }
-                }
-            }
+        for (name, summary) in &self.last_known_summaries {
+            let leverage = if let Ok(info) = self.exchanges.get(name)
+                .unwrap()
+                .get_leverage_info(symbol).await {
+                info.max_leverage
+            } else {
+                20.0
+            };
+
+            println!("{:<12} ${:<13.2}      {:<2}x        ${:<15.2} {:>11.4}%",
+                name,
+                summary.price,
+                leverage,
+                summary.open_interest,
+                summary.funding_rate * 100.0
+            );
         }
     }
 
     pub async fn display_exchange_orderbook(&self, exchange: &str, symbol: &str) {
         if let Some(exchange) = self.exchanges.get(exchange) {
-            match exchange.get_orderbook(symbol).await {
-                Ok(book) => {
-                    let market_price = if let Ok(summary) = exchange.get_market_summary(symbol).await {
-                        summary.price
-                    } else {
-                        0.0
-                    };
+            // Always fetch fresh orderbook data
+            if let Ok(book) = exchange.get_orderbook(symbol).await {
+                let market_price = if let Ok(summary) = exchange.get_market_summary(symbol).await {
+                    summary.price
+                } else {
+                    0.0
+                };
 
-                    println!("      Size          Price");
-                    println!("{:-<30}", "");
+                println!("Asks:");
+                println!("      Size          Price");
+                println!("{:-<30}", "");
 
-                    // Get 5 closest asks (ascending)
-                    println!("Asks:");
-                    book.asks.iter()
-                        .filter(|ask| ask.price > market_price)
-                        .take(5)
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev()
-                        .for_each(|ask| {
-                            println!("\x1b[31m{:>10.4}     ${:>7.2}\x1b[0m",
-                                ask.size,
-                                ask.price
-                            );
-                        });
-
-                    println!("{:-<30}", "");
-                    println!("Market Price: ${:.2}", market_price);
-                    println!("{:-<30}", "");
-
-                    // Get 5 closest bids (descending)
-                    println!("Bids:");
-                    book.bids.iter()
-                        .filter(|bid| bid.price < market_price)
-                        .take(5)
-                        .for_each(|bid| {
-                            println!("\x1b[32m{:>10.4}     ${:>7.2}\x1b[0m",
-                                bid.size,
-                                bid.price
-                            );
-                        });
+                // Display asks in reverse order (highest to lowest)
+                for ask in book.asks.iter().rev().take(5) {
+                    println!("\x1b[31m{:>10.4}     ${:>7.2}\x1b[0m",
+                        ask.size,
+                        ask.price
+                    );
                 }
-                Err(e) => {
-                    println!("Error fetching orderbook: {}", e);
+
+                // Show spread
+                if let (Some(lowest_ask), Some(highest_bid)) = (book.asks.first(), book.bids.first()) {
+                    let spread = lowest_ask.price - highest_bid.price;
+                    println!("{:-<30}", "");
+                    println!("Spread: ${:.2}", spread);
+                    println!("{:-<30}", "");
+                }
+
+                println!("Bids:");
+                // Display bids (highest to lowest)
+                for bid in book.bids.iter().take(5) {
+                    println!("\x1b[32m{:>10.4}     ${:>7.2}\x1b[0m",
+                        bid.size,
+                        bid.price
+                    );
                 }
             }
+        }
+    }
+
+    pub async fn get_exchange_orderbook(&self, exchange: &str, symbol: &str) -> Result<OrderBook> {
+        if let Some(exch) = self.exchanges.get(exchange) {
+            exch.get_orderbook(symbol).await
+        } else {
+            Err(anyhow::anyhow!("Exchange not found"))
+        }
+    }
+
+    pub async fn get_exchange_summary(&self, exchange: &str, symbol: &str) -> Result<MarketSummary> {
+        if let Some(exch) = self.exchanges.get(exchange) {
+            exch.get_market_summary(symbol).await
+        } else {
+            Err(anyhow::anyhow!("Exchange not found"))
         }
     }
 }

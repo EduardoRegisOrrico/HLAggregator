@@ -31,3 +31,10 @@ pub struct MarketSummary {
     pub open_interest: f64,
     pub funding_rate: f64,
 }
+
+#[derive(Debug, Default)]
+pub struct MarketData {
+    pub orderbook: Option<OrderBook>,
+    pub summary: Option<MarketSummary>,
+    pub last_update: Option<std::time::Instant>,
+}

@@ -1,4 +1,4 @@
-use hyperliquid_rust_sdk::{PositionData, Leverage};
+use hyperliquid_rust_sdk::PositionData;
 use anyhow::Result;
 
 #[derive(Debug, Clone)]

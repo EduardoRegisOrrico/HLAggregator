@@ -21,7 +21,7 @@ use crate::error::AggregatorError;
 use std::collections::HashMap;
 use super::hyperliquid::HyperliquidAggregator;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DydxAggregator {
     ws_url: String,
     current_orderbook: Arc<Mutex<Option<OrderBook>>>,
@@ -222,25 +222,6 @@ impl ExchangeAggregator for DydxAggregator {
     async fn is_testnet(&self) -> bool {
         // Check if the WebSocket URL contains testnet indicators
         self.ws_url.contains("testnet") || self.ws_url.contains("stage")
-    }
-
-    async fn display_market_data(&self) {
-        if let Some(ref symbol) = self.current_symbol {
-            println!("\x1B[2J\x1B[1;1H"); // Clear screen
-            println!("Market Data for {} (dYdX)\n", symbol);
-            
-            if let Some(book) = &*self.current_orderbook.lock().await {
-                println!("Orderbook:");
-                println!("  Bids:");
-                for bid in book.bids.iter().take(5) {
-                    println!("    ${:.2} @ {:.4}", bid.price, bid.size);
-                }
-                println!("  Asks:");
-                for ask in book.asks.iter().take(5) {
-                    println!("    ${:.2} @ {:.4}", ask.price, ask.size);
-                }
-            }
-        }
     }
 }
 

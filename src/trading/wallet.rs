@@ -1,10 +1,11 @@
 use ethers::signers::{LocalWallet, Signer};
-use hyperliquid_rust_sdk::{BaseUrl, ExchangeClient, InfoClient};
+use hyperliquid_rust_sdk::{BaseUrl, InfoClient};
 use std::io::{self, Write};
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Default)]
 pub struct WalletManager {
     wallet: Option<LocalWallet>,
     config_path: PathBuf,
@@ -69,7 +70,7 @@ impl WalletManager {
                     let mut confirm = String::new();
                     io::stdin().read_line(&mut confirm)?;
                     if confirm.trim().to_lowercase() == "y" {
-                        self.create_wallet()?;
+                        self.create_new_wallet().await?;
                     }
                 },
                 "2" => {
@@ -78,7 +79,7 @@ impl WalletManager {
                     let mut confirm = String::new();
                     io::stdin().read_line(&mut confirm)?;
                     if confirm.trim().to_lowercase() == "y" {
-                        self.import_wallet()?;
+                        self.import_wallet().await?;
                     }
                 },
                 "3" => break,
@@ -88,7 +89,27 @@ impl WalletManager {
         Ok(())
     }
 
-    fn create_wallet(&mut self) -> Result<()> {
+    pub async fn get_wallet_info(&self) -> Result<(Option<String>, f64, f64)> {
+        if let Some(wallet) = &self.wallet {
+            let address = format!("{:#x}", wallet.address());
+            let info_client = InfoClient::new(None, Some(BaseUrl::Mainnet)).await?;
+            let user_state = info_client.user_state(wallet.address()).await?;
+            
+            // Convert strings to f64
+            let account_value = user_state.margin_summary.account_value.parse::<f64>()?;
+            let margin_used = user_state.margin_summary.total_margin_used.parse::<f64>()?;
+            
+            Ok((
+                Some(address),
+                account_value,
+                margin_used
+            ))
+        } else {
+            Ok((None, 0.0, 0.0))
+        }
+    }
+
+    pub async fn create_new_wallet(&mut self) -> Result<()> {
         let wallet = LocalWallet::new(&mut rand::thread_rng());
         println!("\nNew wallet created!");
         println!("Address: {:#x}", wallet.address());
@@ -99,7 +120,7 @@ impl WalletManager {
         Ok(())
     }
 
-    fn import_wallet(&mut self) -> Result<()> {
+    pub async fn import_wallet(&mut self) -> Result<()> {
         print!("Enter private key (hex format): ");
         io::stdout().flush()?;
         
@@ -108,7 +129,7 @@ impl WalletManager {
         
         let wallet: LocalWallet = input.trim().parse()?;
         println!("\nWallet imported!");
-        println!("Address: {}", wallet.address());
+        println!("Address: {:#x}", wallet.address());
         
         fs::write(&self.config_path, input.trim())?;
         self.wallet = Some(wallet);

@@ -25,6 +25,7 @@ pub enum AggregatorError {
     AssetNotFound(String),
 }
 
+#[derive(Clone)]
 pub struct HyperliquidAggregator {
     client: Arc<Mutex<InfoClient>>,
     subscription_ids: HashMap<String, u32>,
@@ -124,37 +125,6 @@ impl ExchangeAggregator for HyperliquidAggregator {
         });
 
         Ok(())
-    }
-
-    async fn display_market_data(&self) {
-        if let Some(ref symbol) = self.current_symbol {
-            println!("\x1B[2J\x1B[1;1H"); // Clear screen
-            println!("Market Data for {}\n", symbol);
-            
-            // Display orderbook
-            if let Some(book) = &*self.current_orderbook.lock().await {
-                println!("Orderbook:");
-                println!("  Bids:");
-                for level in book.bids.iter().take(5) {
-                    println!("    ${}: {} {} ({} orders)", 
-                        level.price, level.size, symbol, level.orders);
-                }
-                println!("  Asks:");
-                for level in book.asks.iter().take(5) {
-                    println!("    ${}: {} {} ({} orders)", 
-                        level.price, level.size, symbol, level.orders);
-                }
-            }
-            
-            // Display market summary
-            if let Some(summary) = &*self.current_summary.lock().await {
-                println!("\nMarket Summary:");
-                println!("  Price: ${:.2}", summary.price);
-                println!("  24h Volume: ${:.2}", summary.volume_24h);
-                println!("  Open Interest: ${:.2}", summary.open_interest);
-                println!("  Funding Rate: {:.4}%", summary.funding_rate * 100.0);
-            }
-        }
     }
 
     async fn get_market_summary(&self, symbol: &str) -> Result<MarketSummary> {
