@@ -1,10 +1,9 @@
 use hl_aggregator::{
-    AggregatorConfig,
     aggregator::{
-        Exchange,
-        DerivativesAggregator,
-    },
+        DerivativesAggregator, Exchange
+    }, trading::wallet, AggregatorConfig
 };
+use hl_aggregator::aggregator::types::OrderBook;
 use anyhow::Result;
 use tokio::time::{sleep, Duration};
 use std::io::{self, Write, stdin};
@@ -22,6 +21,9 @@ use crossterm::{
     event::{self, Event, KeyCode},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
+    execute,
+    cursor,
+    terminal::{self, Clear, ClearType},
 };
 use hl_aggregator::aggregator::types::{MarketData, MarketSummary};
 
@@ -192,9 +194,10 @@ async fn main() -> Result<()> {
                                     terminal.clear()?;
                                 },
                                 MenuOption::PlaceTrade => {
-                                    if let Some(exchange) = &app.selected_exchange {
-                                        if let Err(e) = handle_trade(exchange, &app.symbol).await {
-                                            eprintln!("Trade error: {}", e);
+                                    if let Some(exchange) = app.selected_exchange.clone() {
+                                        let symbol = app.symbol.clone();
+                                        if let Err(e) = place_trade(&mut app, &symbol, &exchange).await {
+                                            eprintln!("Error placing trade: {}", e);
                                         }
                                     }
                                 },
@@ -206,10 +209,13 @@ async fn main() -> Result<()> {
                                     let mut wallet_info = WalletInfo::default();
                                     
                                     // Update initial wallet info
-                                    if let Ok((address, account_value, margin_used)) = wallet_manager.get_wallet_info().await {
+                                    if let Ok((address, private_key, account_value, margin_used, usdc_balance)) = wallet_manager.get_wallet_info().await {
                                         wallet_info.address = address;
+                                        wallet_info.private_key = private_key;
                                         wallet_info.account_value = account_value;
                                         wallet_info.margin_used = margin_used;
+                                        wallet_info.usdc_balance = usdc_balance;
+                                        wallet_info.log_messages.push("New wallet created successfully.".to_string());
                                     }
                                     
                                     loop {
@@ -223,10 +229,12 @@ async fn main() -> Result<()> {
                                                     KeyCode::Char('1') => {
                                                         if confirm_action(&mut terminal, "Creating a new wallet will replace the existing one. Continue?").await? {
                                                             if let Ok(()) = wallet_manager.create_new_wallet().await {
-                                                                if let Ok((address, account_value, margin_used)) = wallet_manager.get_wallet_info().await {
+                                                                if let Ok((address, private_key, account_value, margin_used, usdc_balance)) = wallet_manager.get_wallet_info().await {
                                                                     wallet_info.address = address;
+                                                                    wallet_info.private_key = private_key;
                                                                     wallet_info.account_value = account_value;
                                                                     wallet_info.margin_used = margin_used;
+                                                                    wallet_info.usdc_balance = usdc_balance;
                                                                     wallet_info.log_messages.push("New wallet created successfully.".to_string());
                                                                 }
                                                             } else {
@@ -237,10 +245,12 @@ async fn main() -> Result<()> {
                                                     KeyCode::Char('2') => {
                                                         if confirm_action(&mut terminal, "Importing a wallet will replace the existing one. Continue?").await? {
                                                             if let Ok(()) = wallet_manager.import_wallet().await {
-                                                                if let Ok((address, account_value, margin_used)) = wallet_manager.get_wallet_info().await {
+                                                                if let Ok((address, private_key, account_value, margin_used, usdc_balance)) = wallet_manager.get_wallet_info().await {
                                                                     wallet_info.address = address;
+                                                                    wallet_info.private_key = private_key;
                                                                     wallet_info.account_value = account_value;
                                                                     wallet_info.margin_used = margin_used;
+                                                                    wallet_info.usdc_balance = usdc_balance;
                                                                     wallet_info.log_messages.push("Wallet imported successfully.".to_string());
                                                                 }
                                                             } else {
@@ -294,90 +304,151 @@ fn blocking_read_line() -> io::Result<String> {
     Ok(input)
 }
 
-async fn handle_trade(exchange: &str, symbol: &str) -> Result<()> {
-    print!("Enter amount: ");
-    io::stdout().flush().map_err(|e| anyhow::anyhow!("{}", e))?;
+async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> {
+    // First clear the main menu and create new terminal
+    disable_raw_mode()?;
+    execute!(io::stdout(), LeaveAlternateScreen)?;
+    enable_raw_mode()?;
+    execute!(io::stdout(), EnterAlternateScreen)?;
     
-    let mut amount = String::new();
-    io::stdin()
-        .read_line(&mut amount)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+    terminal.clear()?;
     
-    let amount = amount.trim().parse::<f64>()
-        .map_err(|e| anyhow::anyhow!("Invalid amount: {}", e))?;
-
-    print!("Market (m) or Limit (l) order? ");
-    io::stdout().flush().map_err(|e| anyhow::anyhow!("{}", e))?;
-    
-    let mut order_type = String::new();
-    io::stdin()
-        .read_line(&mut order_type)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    let _order_type = match order_type.trim().to_lowercase().as_str() {
-        "m" => OrderType::Market,
-        "l" => {
-            print!("Enter price: ");
-            io::stdout().flush().map_err(|e| anyhow::anyhow!("{}", e))?;
-            
-            let mut price_input = String::new();
-            io::stdin()
-                .read_line(&mut price_input)
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
-            
-            let _price = price_input.trim().parse::<f64>()
-                .map_err(|e| anyhow::anyhow!("Invalid price: {}", e))?;
-            
-            OrderType::Limit
-        }
-        _ => return Err(anyhow::anyhow!("Invalid order type")),
-    };
-
     let wallet_manager = WalletManager::new()?;
     let trading_service = HyperliquidService::new(&wallet_manager).await?;
     
+    let mut log_message = None;
+    
     loop {
-        println!("\nTrading {} on {}", symbol, exchange);
-        println!("1. Market Buy");
-        println!("2. Market Sell");
-        println!("3. Limit Buy");
-        println!("4. Limit Sell");
-        println!("5. Back to Main Menu");
-        print!("Select option (1-5): ");
-        io::stdout().flush()?;
+        // Get latest orderbook
+        let orderbook = app.aggregator.get_exchange_orderbook(exchange, symbol).await.ok();
 
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
+        if event::poll(Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char('1'..='4') => {
+                        // Temporarily disable raw mode for input
+                        disable_raw_mode()?;
+                        
+                        // Save current terminal state
+                        terminal.clear()?;
+                        terminal.draw(|f| {
+                            trading_ui(f, symbol, exchange, orderbook.as_ref(), log_message.as_deref());
+                        })?;
+                        
+                        // Move cursor to input position and get amount
+                        execute!(
+                            io::stdout(),
+                            cursor::MoveTo(2, terminal.size()?.height - 2),
+                            terminal::Clear(terminal::ClearType::CurrentLine)
+                        )?;
+                        print!("Enter amount: ");
+                        io::stdout().flush()?;
+                        
+                        let mut amount_input = String::new();
+                        io::stdin().read_line(&mut amount_input)?;
+                        let amount = amount_input.trim().parse()?;
 
-        match input.trim() {
-            "5" => return Ok(()),
-            "1" | "2" | "3" | "4" => {
-                let (order_type, is_buy) = match input.trim() {
-                    "1" => (OrderType::Market, true),
-                    "2" => (OrderType::Market, false),
-                    "3" => (OrderType::Limit, true),
-                    "4" => (OrderType::Limit, false),
-                    _ => unreachable!(),
-                };
+                        let (order_type, is_buy) = match key.code {
+                            KeyCode::Char('1') => (OrderType::Market, true),
+                            KeyCode::Char('2') => (OrderType::Market, false),
+                            KeyCode::Char('3') => (OrderType::Limit, true),
+                            KeyCode::Char('4') => (OrderType::Limit, false),
+                            _ => unreachable!(),
+                        };
 
-                let request = TradeRequest {
-                    asset: symbol.to_string(),
-                    order_type,
-                    is_buy,
-                    amount,
-                    price: None,
-                    leverage: 1,
-                    reduce_only: false,
-                };
+                        // Add leverage input
+                        execute!(
+                            io::stdout(),
+                            cursor::MoveTo(2, terminal.size()?.height - 3),
+                            terminal::Clear(terminal::ClearType::CurrentLine)
+                        )?;
+                        print!("Enter leverage (1-100): ");
+                        io::stdout().flush()?;
+                        
+                        let mut leverage_input = String::new();
+                        io::stdin().read_line(&mut leverage_input)?;
+                        let leverage = leverage_input.trim().parse().unwrap_or(1);
 
-                match trading_service.place_trade(request).await {
-                    Ok(response) => println!("Trade placed successfully: {:?}", response),
-                    Err(e) => println!("Error placing trade: {}", e),
+                        // Add margin mode input
+                        execute!(
+                            io::stdout(),
+                            cursor::MoveTo(2, terminal.size()?.height - 2),
+                            terminal::Clear(terminal::ClearType::CurrentLine)
+                        )?;
+                        print!("Cross margin? (y/n): ");
+                        io::stdout().flush()?;
+                        
+                        let mut margin_input = String::new();
+                        io::stdin().read_line(&mut margin_input)?;
+                        let cross_margin = margin_input.trim().to_lowercase().starts_with('y');
+
+                        let mut price = None;
+                        if matches!(order_type, OrderType::Limit) {
+                            execute!(
+                                io::stdout(),
+                                cursor::MoveTo(2, terminal.size()?.height - 1),
+                                terminal::Clear(terminal::ClearType::CurrentLine)
+                            )?;
+                            print!("Enter price: ");
+                            io::stdout().flush()?;
+                            
+                            let mut price_input = String::new();
+                            io::stdin().read_line(&mut price_input)?;
+                            price = Some(price_input.trim().parse()?);
+                        }
+
+                        // Re-enable raw mode
+                        enable_raw_mode()?;
+                        terminal.clear()?;
+
+                        let is_market = matches!(order_type, OrderType::Market);
+                        let request = TradeRequest {
+                            asset: symbol.to_string(),
+                            order_type,
+                            is_buy,
+                            amount,
+                            price: if is_market {
+                                Some(0.0) // Use 0.0 for market orders
+                            } else {
+                                price
+                            },
+                            leverage,
+                            reduce_only: false,
+                            cross_margin,
+                        };
+
+                        match trading_service.place_trade(request).await {
+                            Ok(response) => {
+                                log_message = Some(format!("Trade placed successfully: {:?}", response));
+                            },
+                            Err(e) => {
+                                log_message = Some(format!("Error placing trade: {}", e));
+                            }
+                        }
+                    },
+                    KeyCode::Char('5') | KeyCode::Esc => {
+                        terminal.clear()?;
+                        return Ok(());
+                    },
+                    _ => {}
                 }
             }
-            _ => println!("Invalid option"),
         }
+
+        // Redraw the UI with log message
+        terminal.draw(|f| {
+            trading_ui(f, symbol, exchange, orderbook.as_ref(), log_message.as_deref());
+        })?;
     }
+
+    // Properly cleanup and restore main menu terminal state
+    disable_raw_mode()?;
+    execute!(io::stdout(), LeaveAlternateScreen)?;
+    enable_raw_mode()?;
+    execute!(io::stdout(), EnterAlternateScreen)?;
+    
+    Ok(())
 }
 
 fn ui(f: &mut ratatui::Frame<'_>, app: &App) {
@@ -506,27 +577,28 @@ fn wallet_management_ui(f: &mut ratatui::Frame<'_>, wallet_info: &WalletInfo) {
         .constraints([
             Constraint::Length(3),    // Title
             Constraint::Length(8),    // Wallet Info
-            Constraint::Length(2),    // Spacing
-            Constraint::Length(7),    // Menu Options
-            Constraint::Length(10),   // Log Area
+            Constraint::Length(6),    // Menu Options
+            Constraint::Length(8),    // Log Area
             Constraint::Min(0),       // Remaining space
         ])
         .split(f.area());
 
     // Title
-    let title = Paragraph::new("Wallet Management")
+    let title = Paragraph::new(" Wallet Management ")
         .block(Block::default().borders(Borders::ALL))
         .alignment(ratatui::layout::Alignment::Center);
     f.render_widget(title, chunks[0]);
 
     // Wallet Info
     let wallet_status = match &wallet_info.address {
-        Some(addr) => format!(
-            "Current Wallet: {}\nAccount Value: ${:.2} USD\nMargin Used: ${:.2} USD",
-            addr, 
-            wallet_info.account_value,
-            wallet_info.margin_used
-        ),
+        Some(addr) => vec![
+            format!("Current Wallet: {}", addr),
+            format!("Private key:{}", wallet_info.private_key.as_ref().unwrap_or(&"[Not Available]".to_string())),
+            format!("Arbitrum USDC Balance: ${:.2} USD", wallet_info.usdc_balance),
+            format!("Hyperliquid USDC Balance: ${:.2} USD", wallet_info.account_value - wallet_info.margin_used),
+            format!("Account Value: ${:.2} USD", wallet_info.account_value),
+            format!("Margin Used: ${:.2} USD", wallet_info.margin_used),
+        ].join("\n"),
         None => "No wallet configured".to_string()
     };
 
@@ -539,13 +611,13 @@ fn wallet_management_ui(f: &mut ratatui::Frame<'_>, wallet_info: &WalletInfo) {
         "1. Create New Wallet\n2. Import Existing Wallet\n3. Back to Main Menu"
     )
     .block(Block::default().borders(Borders::ALL).title("Options"));
-    f.render_widget(menu, chunks[3]);
+    f.render_widget(menu, chunks[2]);
 
     // Log Area
     let log_content = wallet_info.log_messages.join("\n");
     let log_widget = Paragraph::new(log_content)
         .block(Block::default().borders(Borders::ALL).title("Log Messages"));
-    f.render_widget(log_widget, chunks[4]);
+    f.render_widget(log_widget, chunks[3]);
 }
 
 async fn confirm_action(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, message: &str) -> Result<bool> {
@@ -586,8 +658,105 @@ async fn confirm_action(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, m
 #[derive(Default)]
 struct WalletInfo {
     address: Option<String>,
+    private_key: Option<String>,
     account_value: f64,
     margin_used: f64,
+    usdc_balance: f64,
     log_messages: Vec<String>,
 }
 
+fn trading_ui(f: &mut ratatui::Frame<'_>, symbol: &str, exchange: &str, orderbook: Option<&OrderBook>, log_message: Option<&str>) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),      // Main content
+            Constraint::Length(3),   // Log area
+        ])
+        .split(f.area());
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(30),  // Trading menu
+            Constraint::Percentage(70),  // Orderbook
+        ])
+        .split(chunks[0]);
+
+    // Trading Menu (existing code)
+    let menu_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),   // Title
+            Constraint::Length(8),   // Trading options
+            Constraint::Min(0),      // Remaining space
+        ])
+        .split(main_chunks[0]);
+
+    // Title
+    let title = Paragraph::new(format!("Trading {} on {}", symbol, exchange))
+        .block(Block::default().borders(Borders::ALL))
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(title, menu_chunks[0]);
+
+    // Trading Options
+    let options = Paragraph::new(
+        "1. Market Buy\n2. Market Sell\n3. Limit Buy\n4. Limit Sell\n5. Back to Main Menu"
+    )
+    .block(Block::default().borders(Borders::ALL).title("Options"));
+    f.render_widget(options, menu_chunks[1]);
+
+    // Orderbook (reuse existing orderbook display code)
+    if let Some(orderbook) = orderbook {
+        let mut orderbook_text = String::new();
+        
+        // Helper function to format price with dynamic decimal places
+        let format_price = |price: f64| -> String {
+            if price < 10.0 {
+                format!("${:>10.6}", price)
+            } else {
+                format!("${:>10.2}", price)
+            }
+        };
+        
+        // Display asks in red (reversed order)
+        orderbook_text.push_str("\x1b[0mAsks:\n");
+        orderbook_text.push_str("      Size          Price\n");
+        orderbook_text.push_str("------------------------------\n");
+        
+        for ask in orderbook.asks.iter().rev().take(5) {
+            orderbook_text.push_str(&format!("\x1b[31m{:>10.4}     {}\x1b[0m\n",
+                ask.size,
+                format_price(ask.price)
+            ));
+        }
+        
+        // Show spread
+        if let (Some(lowest_ask), Some(highest_bid)) = (orderbook.asks.first(), orderbook.bids.first()) {
+            let spread = lowest_ask.price - highest_bid.price;
+            orderbook_text.push_str("\x1b[0m------------------------------\n");
+            orderbook_text.push_str(&format!("Spread: {}\n", format_price(spread)));
+            orderbook_text.push_str("------------------------------\n");
+        }
+        
+        // Display bids in green
+        orderbook_text.push_str("\x1b[0mBids:\n");
+        for bid in orderbook.bids.iter().take(5) {
+            orderbook_text.push_str(&format!("\x1b[32m{:>10.4}     {}\x1b[0m\n",
+                bid.size,
+                format_price(bid.price)
+            ));
+        }
+        
+        let orderbook_title = format!("{} Orderbook", orderbook.exchange);
+        let orderbook_widget = Paragraph::new(orderbook_text)
+            .block(Block::default().borders(Borders::ALL).title(orderbook_title));
+        f.render_widget(orderbook_widget, main_chunks[1]);
+    }
+
+    // Add log area
+    if let Some(message) = log_message {
+        let log = Paragraph::new(message)
+            .block(Block::default().borders(Borders::ALL).title("Trade Log"));
+        f.render_widget(log, chunks[1]);
+    }
+}

@@ -46,31 +46,34 @@ impl HyperliquidService {
                 .update_leverage(
                     request.leverage,
                     &request.asset,
-                    true, // Using cross leverage
+                    request.cross_margin,
                     None
                 )
                 .await?;
         }
 
-        let order = match request.order_type {
+        match request.order_type {
             OrderType::Market => {
-                ClientOrderRequest {
+                // For market orders, we'll use a limit IOC order with a favorable price
+                let order = ClientOrderRequest {
                     asset: request.asset,
                     is_buy: request.is_buy,
                     reduce_only: request.reduce_only,
-                    limit_px: 0.0, // For market orders, this will be ignored
+                    limit_px: if request.is_buy { f64::MAX } else { 0.0 }, // Use extreme prices for market orders
                     sz: request.amount,
                     cloid: None,
                     order_type: ClientOrder::Limit(ClientLimit {
                         tif: "Ioc".to_string(), // Immediate-or-Cancel for market orders
                     }),
-                }
+                };
+
+                Ok(self.exchange_client.order(order, None).await?)
             }
             
             OrderType::Limit => {
                 let price = request.price.expect("Limit orders require a price");
                 
-                ClientOrderRequest {
+                let order = ClientOrderRequest {
                     asset: request.asset,
                     is_buy: request.is_buy,
                     reduce_only: request.reduce_only,
@@ -80,11 +83,11 @@ impl HyperliquidService {
                     order_type: ClientOrder::Limit(ClientLimit {
                         tif: "Gtc".to_string(), // Good-til-Cancelled for limit orders
                     }),
-                }
-            }
-        };
+                };
 
-        Ok(self.exchange_client.order(order, None).await?)
+                Ok(self.exchange_client.order(order, None).await?)
+            }
+        }
     }
 
     pub async fn get_positions(&self) -> Result<Vec<Position>> {
