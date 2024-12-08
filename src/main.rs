@@ -6,9 +6,9 @@ use hl_aggregator::{
 use hl_aggregator::aggregator::types::OrderBook;
 use anyhow::Result;
 use tokio::time::{sleep, Duration};
-use std::io::{self, Write, stdin};
+use std::io::{self, Write, stdin, Stdout};
 use hl_aggregator::trading::{OrderType, TradeRequest};
-use hl_aggregator::trading::hyperliquid_service::HyperliquidService;
+use hl_aggregator::trading::hyperliquid_service::{HyperliquidService, OpenOrder};
 use hl_aggregator::trading::wallet::WalletManager;
 use hl_aggregator::aggregator::traits::ExchangeAggregator;
 use ratatui::{
@@ -26,11 +26,14 @@ use crossterm::{
     terminal::{self, Clear, ClearType},
 };
 use hl_aggregator::aggregator::types::{MarketData, MarketSummary};
+use env_logger;
+use hl_aggregator::trading::positions::Position;
 
 enum MenuOption {
     ViewDydx,
     ViewHyperliquid,
     ViewPositions,
+    ViewOpenOrders,
     ChangeSymbol,
     PlaceTrade,
     ManageWallets,
@@ -43,10 +46,11 @@ impl MenuOption {
             "1" => Some(Self::ViewDydx),
             "2" => Some(Self::ViewHyperliquid),
             "3" => Some(Self::ViewPositions),
-            "4" => Some(Self::ChangeSymbol),
-            "5" => Some(Self::PlaceTrade),
-            "6" => Some(Self::ManageWallets),
-            "7" => Some(Self::Exit),
+            "4" => Some(Self::ViewOpenOrders),
+            "5" => Some(Self::ChangeSymbol),
+            "6" => Some(Self::PlaceTrade),
+            "7" => Some(Self::ManageWallets),
+            "8" => Some(Self::Exit),
             _ => None,
         }
     }
@@ -54,6 +58,8 @@ impl MenuOption {
 
 struct App {
     aggregator: DerivativesAggregator,
+    hyperliquid_service: HyperliquidService,
+    wallet_manager: WalletManager,
     selected_exchange: Option<String>,
     symbol: String,
     market_data: MarketData,
@@ -67,9 +73,13 @@ impl App {
     async fn new() -> Result<Self> {
         let config = AggregatorConfig::default();
         let aggregator = DerivativesAggregator::new(config).await?;
+        let wallet_manager = WalletManager::new()?;
+        let hyperliquid_service = HyperliquidService::new(&wallet_manager).await?;
         
         Ok(Self {
             aggregator,
+            hyperliquid_service,
+            wallet_manager,
             selected_exchange: None,
             symbol: "BTC".to_string(),
             market_data: MarketData::default(),
@@ -133,6 +143,9 @@ async fn main() -> Result<()> {
     // Create app state
     let mut app = App::new().await?;
     
+    std::env::set_var("RUST_LOG", "info");
+    env_logger::init();
+    
     loop {
         // Update market data first
         if let Err(e) = app.update().await {
@@ -164,16 +177,24 @@ async fn main() -> Result<()> {
                                         let trading_service = HyperliquidService::new(&wallet_manager).await?;
                                         let positions = trading_service.get_positions().await?;
                                         
-                                        println!("\x1b[2J\x1b[1;1H"); // Clear screen
-                                        println!("\x1b[1;36mCurrent Positions:\x1b[0m\n");
+                                        // Clear screen and show positions
+                                        terminal.clear()?;
+                                        terminal.draw(|f| {
+                                            Position::display_positions(f, &positions);
+                                        })?;
                                         
-                                        for position in positions {
-                                            position.display();
+                                        // Wait for input to return to main menu
+                                        if let Event::Key(key) = event::read()? {
+                                            if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
+                                                continue;  // Return to main menu
+                                            }
                                         }
-                                        
-                                        println!("\nPress any key to continue...");
-                                        let _ = blocking_read_line()?;
                                     }
+                                },
+                                MenuOption::ViewOpenOrders => {
+                                    let open_orders = app.hyperliquid_service.get_open_orders().await?;
+                                    display_open_orders(&mut terminal, &open_orders)?;
+                                    continue;
                                 },
                                 MenuOption::ChangeSymbol => {
                                     disable_raw_mode()?;
@@ -292,24 +313,7 @@ async fn start_market_updates(aggregator: &mut DerivativesAggregator, symbol: &s
     Ok(())
 }
 
-fn non_blocking_read_line() -> io::Result<String> {
-    let mut input = String::new();
-    stdin().read_line(&mut input)?;
-    Ok(input)
-}
-
-fn blocking_read_line() -> io::Result<String> {
-    let mut input = String::new();
-    stdin().read_line(&mut input)?;
-    Ok(input)
-}
-
 async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> {
-    // First clear the main menu and create new terminal
-    disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen)?;
-    enable_raw_mode()?;
-    execute!(io::stdout(), EnterAlternateScreen)?;
     
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
@@ -342,12 +346,12 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                             cursor::MoveTo(2, terminal.size()?.height - 2),
                             terminal::Clear(terminal::ClearType::CurrentLine)
                         )?;
-                        print!("Enter amount: ");
+                        print!("Enter USD value: $");
                         io::stdout().flush()?;
                         
                         let mut amount_input = String::new();
                         io::stdin().read_line(&mut amount_input)?;
-                        let amount = amount_input.trim().parse()?;
+                        let usd_value = amount_input.trim().parse()?;
 
                         let (order_type, is_buy) = match key.code {
                             KeyCode::Char('1') => (OrderType::Market, true),
@@ -407,7 +411,7 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                             asset: symbol.to_string(),
                             order_type,
                             is_buy,
-                            amount,
+                            usd_value,
                             price: if is_market {
                                 Some(0.0) // Use 0.0 for market orders
                             } else {
@@ -427,7 +431,7 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                             }
                         }
                     },
-                    KeyCode::Char('5') | KeyCode::Esc => {
+                    KeyCode::Char('q') | KeyCode::Esc => {
                         terminal.clear()?;
                         return Ok(());
                     },
@@ -463,7 +467,7 @@ fn ui(f: &mut ratatui::Frame<'_>, app: &App) {
         .split(f.area());
 
     // Menu
-    let menu = Paragraph::new("1. View Dydx  2. View Hyperliquid  3. View Positions  4. Change Symbol  5. Place Trade  6. Manage Wallets  7. Exit")
+    let menu = Paragraph::new("1. View Dydx  2. View Hyperliquid  3. View Positions  4. View Open Orders  5. Change Symbol  6. Place Trade  7. Manage Wallets  8. Exit")
         .block(Block::default().borders(Borders::ALL).title("Menu"));
     f.render_widget(menu, chunks[0]);
 
@@ -669,8 +673,8 @@ fn trading_ui(f: &mut ratatui::Frame<'_>, symbol: &str, exchange: &str, orderboo
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(0),      // Main content
-            Constraint::Length(3),   // Log area
+            Constraint::Percentage(70),  // Main content - reduced from Min(0)
+            Constraint::Percentage(30),  // Log area - increased from Length(3)
         ])
         .split(f.area());
 
@@ -753,10 +757,78 @@ fn trading_ui(f: &mut ratatui::Frame<'_>, symbol: &str, exchange: &str, orderboo
         f.render_widget(orderbook_widget, main_chunks[1]);
     }
 
-    // Add log area
+    // Add log area with increased size
     if let Some(message) = log_message {
         let log = Paragraph::new(message)
-            .block(Block::default().borders(Borders::ALL).title("Trade Log"));
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .title("Trade Log"))
+            .wrap(ratatui::widgets::Wrap { trim: true });  // Add text wrapping
         f.render_widget(log, chunks[1]);
     }
+}
+
+fn display_open_orders(terminal: &mut Terminal<CrosstermBackend<Stdout>>, orders: &[OpenOrder]) -> Result<()> {
+    terminal.draw(|f| {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([
+                Constraint::Length(3),    // Title
+                Constraint::Min(0),       // Orders
+                Constraint::Length(3),    // Menu
+            ].as_ref())
+            .split(f.size());
+
+        // Title
+        let title = Paragraph::new("Open Orders")
+            .block(Block::default().borders(Borders::ALL))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(title, chunks[0]);
+
+        // Orders content
+        let mut orders_text = String::new();
+        orders_text.push_str("Asset    Side    USD Amount    Price    Order ID\n");
+        orders_text.push_str("------------------------------------------------\n");
+
+        for order in orders {
+            let usd_amount = order.size * order.price;
+            orders_text.push_str(&format!(
+                "{:<8} {:<7} ${:<11.2} {:<8.2} {}\n",
+                order.asset,
+                order.side,
+                usd_amount,
+                order.price,
+                order.order_id,
+            ));
+        }
+
+        if orders.is_empty() {
+            orders_text.push_str("\nNo open orders");
+        }
+
+        let orders_widget = Paragraph::new(orders_text)
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .title("Orders List"));
+
+        f.render_widget(orders_widget, chunks[1]);
+
+        // Menu
+        let menu = Paragraph::new("Press 'q' to return to main menu")
+            .block(Block::default().borders(Borders::ALL))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(menu, chunks[2]);
+    })?;
+
+    // Wait for key press to return to menu
+    loop {
+        if let Event::Key(key) = event::read()? {
+            if let KeyCode::Char('q') | KeyCode::Esc = key.code {
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }

@@ -32,31 +32,6 @@ pub struct DydxAggregator {
     hl_aggregator: Arc<HyperliquidAggregator>,
 }
 
-#[derive(Debug, Deserialize)]
-struct MarketResponse {
-    #[serde(rename = "type")]
-    msg_type: String,
-    channel: String,
-    contents: MarketContents,
-}
-
-#[derive(Debug, Deserialize)]
-struct MarketContents {
-    markets: HashMap<String, MarketData>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MarketData {
-    #[serde(rename = "oraclePrice")]
-    oracle_price: String,
-    #[serde(rename = "nextFundingRate")]
-    next_funding_rate: String,
-    #[serde(rename = "volume24H")]
-    volume_24h: String,
-    #[serde(rename = "openInterest")]
-    open_interest: String,
-}
-
 #[async_trait]
 impl ExchangeAggregator for DydxAggregator {
     async fn new(testnet: bool) -> Result<Self> {

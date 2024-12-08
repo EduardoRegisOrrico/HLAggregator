@@ -13,11 +13,11 @@ pub enum OrderType {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TradeRequest {
     pub asset: String,
-    pub order_type: OrderType,
     pub is_buy: bool,
-    pub amount: f64,
+    pub order_type: OrderType,
+    pub usd_value: f64,
     pub price: Option<f64>,
     pub leverage: u32,
-    pub reduce_only: bool,
     pub cross_margin: bool,
+    pub reduce_only: bool,
 }
