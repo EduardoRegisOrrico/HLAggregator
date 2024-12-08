@@ -28,7 +28,7 @@ use crossterm::{
 use hl_aggregator::aggregator::types::{MarketData, MarketSummary};
 use env_logger;
 use hl_aggregator::trading::positions::Position;
-
+use ethers::signers::Signer;
 enum MenuOption {
     ViewDydx,
     ViewHyperliquid,
@@ -223,71 +223,7 @@ async fn main() -> Result<()> {
                                     }
                                 },
                                 MenuOption::ManageWallets => {
-                                    let mut wallet_manager = WalletManager::new()?;
-                                    let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
-                                    terminal.clear()?;
-                                    
-                                    let mut wallet_info = WalletInfo::default();
-                                    
-                                    // Update initial wallet info
-                                    if let Ok((address, private_key, account_value, margin_used, usdc_balance)) = wallet_manager.get_wallet_info().await {
-                                        wallet_info.address = address;
-                                        wallet_info.private_key = private_key;
-                                        wallet_info.account_value = account_value;
-                                        wallet_info.margin_used = margin_used;
-                                        wallet_info.usdc_balance = usdc_balance;
-                                        wallet_info.log_messages.push("New wallet created successfully.".to_string());
-                                    }
-                                    
-                                    loop {
-                                        terminal.draw(|f| {
-                                            wallet_management_ui(f, &wallet_info)
-                                        })?;
-                                        
-                                        if event::poll(Duration::from_millis(100))? {
-                                            if let Event::Key(key) = event::read()? {
-                                                match key.code {
-                                                    KeyCode::Char('1') => {
-                                                        if confirm_action(&mut terminal, "Creating a new wallet will replace the existing one. Continue?").await? {
-                                                            if let Ok(()) = wallet_manager.create_new_wallet().await {
-                                                                if let Ok((address, private_key, account_value, margin_used, usdc_balance)) = wallet_manager.get_wallet_info().await {
-                                                                    wallet_info.address = address;
-                                                                    wallet_info.private_key = private_key;
-                                                                    wallet_info.account_value = account_value;
-                                                                    wallet_info.margin_used = margin_used;
-                                                                    wallet_info.usdc_balance = usdc_balance;
-                                                                    wallet_info.log_messages.push("New wallet created successfully.".to_string());
-                                                                }
-                                                            } else {
-                                                                wallet_info.log_messages.push("Failed to create new wallet.".to_string());
-                                                            }
-                                                        }
-                                                    },
-                                                    KeyCode::Char('2') => {
-                                                        if confirm_action(&mut terminal, "Importing a wallet will replace the existing one. Continue?").await? {
-                                                            if let Ok(()) = wallet_manager.import_wallet().await {
-                                                                if let Ok((address, private_key, account_value, margin_used, usdc_balance)) = wallet_manager.get_wallet_info().await {
-                                                                    wallet_info.address = address;
-                                                                    wallet_info.private_key = private_key;
-                                                                    wallet_info.account_value = account_value;
-                                                                    wallet_info.margin_used = margin_used;
-                                                                    wallet_info.usdc_balance = usdc_balance;
-                                                                    wallet_info.log_messages.push("Wallet imported successfully.".to_string());
-                                                                }
-                                                            } else {
-                                                                wallet_info.log_messages.push("Failed to import wallet.".to_string());
-                                                            }
-                                                        }
-                                                    },
-                                                    KeyCode::Char('3') | KeyCode::Esc => {
-                                                        terminal.clear()?;
-                                                        break;
-                                                    },
-                                                    _ => {}
-                                                }
-                                            }
-                                        }
-                                    }
+                                    manage_wallets(&mut app, &mut terminal).await?;
                                 },
                                 MenuOption::Exit => break,
                             }
@@ -367,7 +303,7 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                             cursor::MoveTo(2, terminal.size()?.height - 3),
                             terminal::Clear(terminal::ClearType::CurrentLine)
                         )?;
-                        print!("Enter leverage (1-100): ");
+                        print!("Enter leverage: ");
                         io::stdout().flush()?;
                         
                         let mut leverage_input = String::new();
@@ -438,6 +374,7 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                     _ => {}
                 }
             }
+
         }
 
         // Redraw the UI with log message
@@ -575,53 +512,14 @@ fn format_volume(volume: f64) -> String {
     }
 }
 
-fn wallet_management_ui(f: &mut ratatui::Frame<'_>, wallet_info: &WalletInfo) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),    // Title
-            Constraint::Length(8),    // Wallet Info
-            Constraint::Length(6),    // Menu Options
-            Constraint::Length(8),    // Log Area
-            Constraint::Min(0),       // Remaining space
-        ])
-        .split(f.area());
-
-    // Title
-    let title = Paragraph::new(" Wallet Management ")
-        .block(Block::default().borders(Borders::ALL))
-        .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(title, chunks[0]);
-
-    // Wallet Info
-    let wallet_status = match &wallet_info.address {
-        Some(addr) => vec![
-            format!("Current Wallet: {}", addr),
-            format!("Private key:{}", wallet_info.private_key.as_ref().unwrap_or(&"[Not Available]".to_string())),
-            format!("Arbitrum USDC Balance: ${:.2} USD", wallet_info.usdc_balance),
-            format!("Hyperliquid USDC Balance: ${:.2} USD", wallet_info.account_value - wallet_info.margin_used),
-            format!("Account Value: ${:.2} USD", wallet_info.account_value),
-            format!("Margin Used: ${:.2} USD", wallet_info.margin_used),
-        ].join("\n"),
-        None => "No wallet configured".to_string()
-    };
-
-    let wallet_widget = Paragraph::new(wallet_status)
-        .block(Block::default().borders(Borders::ALL).title("Wallet Status"));
-    f.render_widget(wallet_widget, chunks[1]);
-
-    // Menu
-    let menu = Paragraph::new(
-        "1. Create New Wallet\n2. Import Existing Wallet\n3. Back to Main Menu"
-    )
-    .block(Block::default().borders(Borders::ALL).title("Options"));
-    f.render_widget(menu, chunks[2]);
-
-    // Log Area
-    let log_content = wallet_info.log_messages.join("\n");
-    let log_widget = Paragraph::new(log_content)
-        .block(Block::default().borders(Borders::ALL).title("Log Messages"));
-    f.render_widget(log_widget, chunks[3]);
+#[derive(Default)]
+struct WalletInfo {
+    address: Option<String>,
+    private_key: Option<String>,
+    account_value: f64,
+    margin_used: f64,
+    usdc_balance: f64,
+    log_messages: Vec<String>,
 }
 
 async fn confirm_action(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, message: &str) -> Result<bool> {
@@ -657,16 +555,6 @@ async fn confirm_action(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, m
             }
         }
     }
-}
-
-#[derive(Default)]
-struct WalletInfo {
-    address: Option<String>,
-    private_key: Option<String>,
-    account_value: f64,
-    margin_used: f64,
-    usdc_balance: f64,
-    log_messages: Vec<String>,
 }
 
 fn trading_ui(f: &mut ratatui::Frame<'_>, symbol: &str, exchange: &str, orderbook: Option<&OrderBook>, log_message: Option<&str>) {
@@ -826,6 +714,86 @@ fn display_open_orders(terminal: &mut Terminal<CrosstermBackend<Stdout>>, orders
         if let Event::Key(key) = event::read()? {
             if let KeyCode::Char('q') | KeyCode::Esc = key.code {
                 break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
+    loop {
+        // Get wallet info
+        let wallet_info = app.wallet_manager.get_wallet_info().await?;
+        
+        // Draw UI
+        terminal.draw(|f| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints([
+                    Constraint::Length(3),    // Title
+                    Constraint::Length(8),    // Wallet Status
+                    Constraint::Length(7),    // Options Menu
+                    Constraint::Length(3),    // Input Prompt
+                ].as_ref())
+                .split(f.size());
+
+            // Title
+            let title = Paragraph::new("Wallet Management")
+                .block(Block::default().borders(Borders::ALL))
+                .alignment(ratatui::layout::Alignment::Center);
+            f.render_widget(title, chunks[0]);
+
+            // Wallet Status
+            let mut status_text = String::new();
+            if let Some(wallet) = app.wallet_manager.get_wallet() {
+                status_text.push_str(&format!("ETH Address: {:#x}\n", wallet.address()));
+                status_text.push_str(&format!("USDC Balance: ${:.2}\n", wallet_info.4));
+                status_text.push_str(&format!("Account Value: ${:.2}\n", wallet_info.2));
+                status_text.push_str(&format!("Margin Used: ${:.2}\n", wallet_info.3));
+            } else {
+                status_text.push_str("No ETH wallet configured\n");
+            }
+
+            if let Some(dydx_wallet) = app.wallet_manager.get_dydx_wallet() {
+                if let Ok(account) = dydx_wallet.account_offline(0) {
+                    status_text.push_str(&format!("dYdX Address: {}\n", account.address()));
+                }
+            } else {
+                status_text.push_str("No dYdX wallet configured\n");
+            }
+
+            let status = Paragraph::new(status_text)
+                .block(Block::default().borders(Borders::ALL).title("Wallet Status"));
+            f.render_widget(status, chunks[1]);
+
+            // Options Menu
+            let options = Paragraph::new(
+                "1. Create New ETH Wallet\n\
+                 2. Import Existing ETH Wallet\n\
+                 3. Create New dYdX Wallet\n\
+                 4. Import Existing dYdX Wallet\n\
+                 5. Back to Main Menu"
+            )
+            .block(Block::default().borders(Borders::ALL).title("Options"));
+            f.render_widget(options, chunks[2]);
+
+            // Input Prompt
+            let prompt = Paragraph::new("Enter choice (1-5): ")
+                .block(Block::default().borders(Borders::ALL));
+            f.render_widget(prompt, chunks[3]);
+        })?;
+
+        // Handle input
+        if let Event::Key(key) = event::read()? {
+            match key.code {
+                KeyCode::Char('1') => app.wallet_manager.create_eth_wallet().await?,
+                KeyCode::Char('2') => app.wallet_manager.import_eth_wallet().await?,
+                KeyCode::Char('3') => app.wallet_manager.create_dydx_wallet().await?,
+                KeyCode::Char('4') => app.wallet_manager.import_dydx_wallet().await?,
+                KeyCode::Char('5') | KeyCode::Char('q') | KeyCode::Esc => break,
+                _ => {}
             }
         }
     }
