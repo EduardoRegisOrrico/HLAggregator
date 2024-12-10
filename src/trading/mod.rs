@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 pub mod hyperliquid_service;
+pub mod dydx_service;
 pub mod positions;
 pub mod wallet;
+pub mod orders;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum OrderType {
@@ -21,3 +23,14 @@ pub struct TradeRequest {
     pub cross_margin: bool,
     pub reduce_only: bool,
 }
+
+// Initialize logging for the trading module
+pub fn init_logging() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init()
+        .ok();
+}
+
+#[cfg(test)]
+mod tests;

@@ -11,9 +11,8 @@ use async_trait::async_trait;
 use traits::ExchangeAggregator;
 use dydx::DydxAggregator;
 use hyperliquid::HyperliquidAggregator;
-use types::{LeverageInfo, OrderBook, MarketSummary, Level};
+use types::{LeverageInfo, OrderBook, MarketSummary};
 use std::io::Write;
-use std::future::Future;
 
 #[derive(Debug, Clone)]
 pub enum Exchange {

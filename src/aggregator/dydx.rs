@@ -1,13 +1,8 @@
 use tokio_tungstenite::{
-    connect_async,
     WebSocketStream,
     MaybeTlsStream,
     tungstenite::Message,
 };
-use tokio::net::TcpStream;
-use serde::Deserialize;
-use futures::{SinkExt, StreamExt};
-use serde_json::{json, Value};
 use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
@@ -18,8 +13,9 @@ use super::traits::ExchangeAggregator;
 use super::types::{OrderBook, MarketSummary, LeverageInfo, Level};
 use tokio::spawn;
 use crate::error::AggregatorError;
-use std::collections::HashMap;
 use super::hyperliquid::HyperliquidAggregator;
+use dydx::indexer::{IndexerClient, OrdersMessage, Ticker, IndexerConfig, RestConfig, SockConfig};
+use num_traits::ToPrimitive;
 
 #[derive(Debug, Clone)]
 pub struct DydxAggregator {
@@ -30,6 +26,7 @@ pub struct DydxAggregator {
     current_symbol: Option<String>,
     available_assets: Arc<Mutex<Vec<String>>>,
     hl_aggregator: Arc<HyperliquidAggregator>,
+    feed_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 #[async_trait]
@@ -49,116 +46,166 @@ impl ExchangeAggregator for DydxAggregator {
             current_symbol: None,
             available_assets: Arc::new(Mutex::new(Vec::new())),
             hl_aggregator: Arc::new(HyperliquidAggregator::new(testnet).await?),
+            feed_handle: Arc::new(Mutex::new(None)),
         })
     }
 
     async fn start_market_updates(&mut self, symbol: &str) -> Result<()> {
-        let (ws_stream, _) = connect_async(&self.ws_url).await?;
-        let (mut write, mut read) = ws_stream.split();
+        // Cancel previous subscription if it exists
+        if let Some(handle) = self.feed_handle.lock().await.take() {
+            handle.abort();
+        }
 
-        // Subscribe to markets channel (this stays constant)
-        let markets_sub = json!({
-            "type": "subscribe",
-            "channel": "v4_markets",
-        });
-        write.send(Message::Text(markets_sub.to_string())).await?;
-
-        // Initial subscription for the symbol
-        self.update_subscription(&mut write, symbol).await?;
+        let formatted_symbol = format!("{}-USD", symbol.to_uppercase());
         
         // Shared state
         let orderbook = self.current_orderbook.clone();
         let summary = self.current_summary.clone();
-        let symbol = symbol.to_string();
-        let ws_url = self.ws_url.clone();
+        let symbol_clone = symbol.to_string();
 
-        spawn(async move {
-            let mut consecutive_errors = 0;
-            
+        let handle = spawn(async move {
             'connection_loop: loop {
-                while let Some(msg) = read.next().await {
-                    match msg {
-                        Ok(Message::Text(text)) => {
-                            consecutive_errors = 0;  // Reset error counter on successful message
-                            
-                            if let Ok(value) = serde_json::from_str::<Value>(&text) {
-                                if let Some(msg_type) = value["type"].as_str() {
-                                    match msg_type {
-                                        "subscribed" | "channel_data" => {
-                                            match value["channel"].as_str() {
-                                                Some("v4_orderbook") => {
-                                                    if let Some(contents) = value["contents"].as_object() {
-                                                        if msg_type == "subscribed" {
-                                                            update_orderbook_from_initial(&orderbook, contents, &symbol).await;
-                                                        } else {
-                                                            update_orderbook_from_update(&orderbook, contents, &symbol).await;
-                                                        }
+                let config = IndexerConfig {
+                    rest: RestConfig {
+                        endpoint: "https://indexer.dydx.trade/v4".to_string(),
+                    },
+                    sock: SockConfig {
+                        endpoint: "wss://indexer.dydx.trade/v4/ws".to_string(),
+                        timeout: 1000,
+                        rate_limit: std::num::NonZeroU32::new(2).unwrap(),
+                    },
+                };
+                
+                let mut client = IndexerClient::new(config);
+                let ticker = Ticker(formatted_symbol.clone());
+                
+                match client.feed().orders(&ticker, false).await {
+                    Ok(mut feed) => {
+                        while let Some(message) = feed.recv().await {
+                            match message {
+                                OrdersMessage::Initial(initial) => {
+                                    let new_book = OrderBook {
+                                        exchange: "dYdX".to_string(),
+                                        symbol: symbol_clone.clone(),
+                                        bids: initial.contents.bids.into_iter()
+                                            .map(|level| Level {
+                                                price: level.price.0.to_f64().unwrap_or(0.0),
+                                                size: level.size.0.to_f64().unwrap_or(0.0),
+                                                orders: 1,
+                                            })
+                                            .collect(),
+                                        asks: initial.contents.asks.into_iter()
+                                            .map(|level| Level {
+                                                price: level.price.0.to_f64().unwrap_or(0.0),
+                                                size: level.size.0.to_f64().unwrap_or(0.0),
+                                                orders: 1,
+                                            })
+                                            .collect(),
+                                        timestamp: Utc::now().timestamp_millis() as u64,
+                                    };
+                                    *orderbook.lock().await = Some(new_book);
+                                },
+                                OrdersMessage::Update(update) => {
+                                    if let Some(book) = orderbook.lock().await.as_mut() {
+                                        // Update asks
+                                        if let Some(asks) = update.contents.asks {
+                                            for ask in asks {
+                                                if ask.size.0.to_f64().unwrap_or(0.0) == 0.0 {
+                                                    book.asks.retain(|a| a.price != ask.price.0.to_f64().unwrap_or(0.0));
+                                                } else {
+                                                    if let Some(existing) = book.asks.iter_mut().find(|a| a.price == ask.price.0.to_f64().unwrap_or(0.0)) {
+                                                        existing.size = ask.size.0.to_f64().unwrap_or(0.0);
+                                                    } else {
+                                                        book.asks.push(Level {
+                                                            price: ask.price.0.to_f64().unwrap_or(0.0),
+                                                            size: ask.size.0.to_f64().unwrap_or(0.0),
+                                                            orders: 1,
+                                                        });
                                                     }
-                                                },
-                                                Some("v4_markets") => {
-                                                    handle_markets_update(&value, &summary, &symbol).await;
-                                                },
-                                                _ => {}
+                                                }
                                             }
-                                        },
-                                        _ => {}
+                                        }
+
+                                        // Update bids
+                                        if let Some(bids) = update.contents.bids {
+                                            for bid in bids {
+                                                if bid.size.0.to_f64().unwrap_or(0.0) == 0.0 {
+                                                    book.bids.retain(|b| b.price != bid.price.0.to_f64().unwrap_or(0.0));
+                                                } else {
+                                                    if let Some(existing) = book.bids.iter_mut().find(|b| b.price == bid.price.0.to_f64().unwrap_or(0.0)) {
+                                                        existing.size = bid.size.0.to_f64().unwrap_or(0.0);
+                                                    } else {
+                                                        book.bids.push(Level {
+                                                            price: bid.price.0.to_f64().unwrap_or(0.0),
+                                                            size: bid.size.0.to_f64().unwrap_or(0.0),
+                                                            orders: 1,
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Sort the books
+                                        book.bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
+                                        book.asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
+                                        book.timestamp = Utc::now().timestamp_millis() as u64;
                                     }
                                 }
                             }
                         }
-                        Err(e) => {
-                            eprintln!("dYdX websocket error: {}", e);
-                            consecutive_errors += 1;
-                            
-                            if consecutive_errors >= 3 {
-                                // Attempt to reconnect
-                                break 'connection_loop;
-                            }
-                        }
-                        _ => {}
+                        
+                        // Channel closed normally or subscription lost
+                        //eprintln!("dYdX websocket channel closed, waiting before reconnection...");
+                        tokio::time::sleep(Duration::from_secs(1)).await;
                     }
-                }
-
-                // Connection lost or loop broken, attempt to reconnect
-                eprintln!("dYdX websocket connection lost, attempting to reconnect...");
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                
-                // Attempt to establish new connection
-                if let Ok((new_ws_stream, _)) = connect_async(&ws_url).await {
-                    let (new_write, new_read) = new_ws_stream.split();
-                    write = new_write;
-                    read = new_read;
-                    
-                    // Resubscribe to channels
-                    if let Err(e) = write.send(Message::Text(markets_sub.to_string())).await {
-                        eprintln!("Failed to resubscribe to markets: {}", e);
-                        continue;
-                    }
-                    
-                    let orderbook_sub = json!({
-                        "type": "subscribe",
-                        "channel": "v4_orderbook",
-                        "id": format!("{}-USD", symbol)
-                    });
-                    
-                    if let Err(e) = write.send(Message::Text(orderbook_sub.to_string())).await {
-                        eprintln!("Failed to resubscribe to orderbook: {}", e);
-                        continue;
+                    Err(e) => {
+                        //eprintln!("dYdX connection error: {}. Waiting before retry...", e);
+                        // Clear orderbook on subscription error
+                        *orderbook.lock().await = None;
+                        // Wait before retry to prevent rapid reconnection attempts
+                        tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
             }
         });
 
+        *self.feed_handle.lock().await = Some(handle);
+        self.current_symbol = Some(symbol.to_string());
+
         Ok(())
     }
 
-    async fn get_market_summary(&self, _symbol: &str) -> Result<MarketSummary> {
-        if let Some(summary) = self.current_summary.lock().await.as_ref() {
-            Ok(summary.clone())
-        } else {
-            Err(AggregatorError::MarketDataNotFound(
-                "No market data available".to_string()
-            ).into())
+    async fn get_market_summary(&self, symbol: &str) -> Result<MarketSummary> {
+        let formatted_symbol = format!("{}-USD", symbol.to_uppercase());
+        let config = IndexerConfig {
+            rest: RestConfig {
+                endpoint: "https://indexer.dydx.trade".to_string(),
+            },
+            sock: SockConfig {
+                endpoint: "wss://indexer.dydx.trade/v4/ws".to_string(),
+                timeout: 1000,
+                rate_limit: std::num::NonZeroU32::new(2).unwrap(),
+            },
+        };
+        
+        let client = IndexerClient::new(config);
+        let ticker = Ticker(formatted_symbol);
+        
+        // Get market data
+        match client.markets().get_perpetual_market(&ticker).await {
+            Ok(market) => {
+                Ok(MarketSummary {
+                    symbol: symbol.to_string(),
+                    price: market.oracle_price.map(|p| p.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
+                    volume_24h: market.volume_24h.0.to_f64().unwrap_or(0.0),
+                    open_interest: market.open_interest.to_f64().unwrap_or(0.0),
+                    funding_rate: market.next_funding_rate.to_f64().unwrap_or(0.0),
+                })
+            },
+            Err(e) => {
+                log::error!("Failed to fetch market data for symbol: {}. Error: {:?}", symbol, e);
+                Err(e.into())
+            }
         }
     }
 
@@ -197,211 +244,5 @@ impl ExchangeAggregator for DydxAggregator {
     async fn is_testnet(&self) -> bool {
         // Check if the WebSocket URL contains testnet indicators
         self.ws_url.contains("testnet") || self.ws_url.contains("stage")
-    }
-}
-
-// Helper methods
-impl DydxAggregator {
-    async fn get_current_price(&self, _symbol: &str) -> Result<f64> {
-        if let Some(book) = &*self.current_orderbook.lock().await {
-            // Calculate mid price from best bid and ask
-            if let (Some(best_bid), Some(best_ask)) = (book.bids.first(), book.asks.first()) {
-                return Ok((best_bid.price + best_ask.price) / 2.0);
-            }
-        }
-        Err(anyhow::anyhow!("Price not available"))
-    }
-
-    async fn get_funding_rate(&self, symbol: &str) -> Result<f64> {
-        let summary = self.current_summary.lock().await;
-        match &*summary {
-            Some(summary) if summary.symbol == symbol => {
-                Ok(summary.funding_rate)
-            },
-            Some(_) => {
-                Err(AggregatorError::MarketDataNotFound(
-                    format!("Funding rate not found for symbol: {}", symbol)
-                ).into())
-            },
-            None => {
-                Err(AggregatorError::MarketDataNotFound(
-                    "No market data available".to_string()
-                ).into())
-            }
-        }
-    }
-
-    // Add a new method to handle subscription changes
-    async fn update_subscription(
-        &mut self, 
-        write: &mut futures::stream::SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>, 
-        symbol: &str
-    ) -> Result<()> {
-        // First unsubscribe from existing orderbook if any
-        if let Some(old_symbol) = &self.current_symbol {
-            let unsub_msg = json!({
-                "type": "unsubscribe",
-                "channel": "v4_orderbook",
-                "id": format!("{}-USD", old_symbol)
-            });
-            write.send(Message::Text(unsub_msg.to_string())).await?;
-        }
-
-        // Clear current orderbook
-        *self.current_orderbook.lock().await = None;
-
-        // Subscribe to new symbol
-        let sub_msg = json!({
-            "type": "subscribe",
-            "channel": "v4_orderbook",
-            "id": format!("{}-USD", symbol)
-        });
-        write.send(Message::Text(sub_msg.to_string())).await?;
-
-        self.current_symbol = Some(symbol.to_string());
-        Ok(())
-    }
-}
-
-async fn update_orderbook_from_initial(
-    orderbook: &Arc<Mutex<Option<OrderBook>>>, 
-    contents: &serde_json::Map<String, Value>,
-    symbol: &str
-) {
-    let mut new_book = OrderBook {
-        exchange: "dYdX".to_string(),
-        symbol: symbol.to_string(),
-        bids: Vec::new(),
-        asks: Vec::new(),
-        timestamp: Utc::now().timestamp_millis() as u64,
-    };
-
-    // Parse all orders first
-    let mut all_bids: Vec<Level> = Vec::new();
-    let mut all_asks: Vec<Level> = Vec::new();
-
-    if let Some(bids) = contents.get("bids").and_then(|v| v.as_array()) {
-        all_bids = bids.iter()
-            .filter_map(|bid| {
-                Some(Level {
-                    price: bid.get("price")?.as_str()?.parse().ok()?,
-                    size: bid.get("size")?.as_str()?.parse().ok()?,
-                    orders: 1,
-                })
-            })
-            .collect();
-    }
-
-    if let Some(asks) = contents.get("asks").and_then(|v| v.as_array()) {
-        all_asks = asks.iter()
-            .filter_map(|ask| {
-                Some(Level {
-                    price: ask.get("price")?.as_str()?.parse().ok()?,
-                    size: ask.get("size")?.as_str()?.parse().ok()?,
-                    orders: 1,
-                })
-            })
-            .collect();
-    }
-
-    // Sort without limiting
-    all_bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
-    all_asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
-
-    // Store all orders
-    new_book.bids = all_bids;
-    new_book.asks = all_asks;
-
-    *orderbook.lock().await = Some(new_book);
-}
-
-async fn update_orderbook_from_update(
-    orderbook: &Arc<Mutex<Option<OrderBook>>>, 
-    contents: &serde_json::Map<String, Value>,
-    symbol: &str
-) {
-    let mut book = orderbook.lock().await;
-    if let Some(book) = book.as_mut() {
-        let mut all_bids = book.bids.clone();
-        let mut all_asks = book.asks.clone();
-
-        // Update bids
-        if let Some(bids) = contents.get("bids").and_then(|v| v.as_array()) {
-            for bid in bids {
-                if let Some(bid_arr) = bid.as_array() {
-                    if bid_arr.len() == 2 {
-                        let price: f64 = bid_arr[0].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                        let size: f64 = bid_arr[1].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                        
-                        if size == 0.0 {
-                            all_bids.retain(|b| b.price != price);
-                        } else {
-                            if let Some(existing) = all_bids.iter_mut().find(|b| b.price == price) {
-                                existing.size = size;
-                            } else {
-                                all_bids.push(Level { price, size, orders: 1 });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Update asks similarly
-        if let Some(asks) = contents.get("asks").and_then(|v| v.as_array()) {
-            for ask in asks {
-                if let Some(ask_arr) = ask.as_array() {
-                    if ask_arr.len() == 2 {
-                        let price: f64 = ask_arr[0].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                        let size: f64 = ask_arr[1].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                        
-                        if size == 0.0 {
-                            all_asks.retain(|a| a.price != price);
-                        } else {
-                            if let Some(existing) = all_asks.iter_mut().find(|a| a.price == price) {
-                                existing.size = size;
-                            } else {
-                                all_asks.push(Level { price, size, orders: 1 });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Simply sort without filtering or limiting
-        all_bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap()); // Highest to lowest
-        all_asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap()); // Lowest to highest
-
-        // Store all orders
-        book.bids = all_bids;
-        book.asks = all_asks;
-        book.timestamp = Utc::now().timestamp_millis() as u64;
-    }
-}
-
-async fn handle_markets_update(value: &Value, summary: &Arc<Mutex<Option<MarketSummary>>>, symbol: &str) {
-    if let Some(contents) = value["contents"].as_object() {
-        if let Some(market) = contents.get("markets").and_then(|m| m.as_object()) {
-            let market_key = format!("{}-USD", symbol);
-            if let Some(market_data) = market.get(&market_key) {
-                let new_summary = MarketSummary {
-                    symbol: symbol.to_string(),
-                    price: market_data["oraclePrice"].as_str()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(0.0),
-                    volume_24h: market_data["volume24H"].as_str()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(0.0),
-                    open_interest: market_data["openInterest"].as_str()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(0.0),
-                    funding_rate: market_data["nextFundingRate"].as_str()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(0.0),
-                };
-                *summary.lock().await = Some(new_summary);
-            }
-        }
     }
 }

@@ -218,43 +218,6 @@ impl ExchangeAggregator for HyperliquidAggregator {
     }
 }
 
-async fn get_market_summary(client: &InfoClient, symbol: &str) -> Result<MarketSummary> {
-    let _meta = client.meta().await?;
-    let all_mids = client.all_mids().await?;
-    
-    let price = all_mids.get(symbol)
-        .ok_or_else(|| anyhow::anyhow!("Price not found"))?
-        .parse()
-        .map_err(|e| anyhow::anyhow!("Failed to parse price: {}", e))?;
-
-    // Get funding rate (last 24h)
-    let now = Utc::now().timestamp_millis() as u64;
-    let day_ago = now - (24 * 60 * 60 * 1000);
-    let funding = client.funding_history(symbol.to_string(), day_ago, Some(now)).await?;
-    let funding_rate = funding.last()
-        .map(|f| f.funding_rate.parse::<f64>().unwrap_or(0.0))
-        .unwrap_or(0.0);
-
-    // Calculate volume and open interest
-    let recent_trades = client.recent_trades(symbol.to_string()).await?;
-    let volume_24h = recent_trades.iter()
-        .filter(|trade| trade.time >= day_ago)
-        .map(|trade| {
-            let price = trade.px.parse::<f64>().unwrap_or(0.0);
-            let size = trade.sz.parse::<f64>().unwrap_or(0.0);
-            price * size
-        })
-        .sum();
-
-    Ok(MarketSummary {
-        symbol: symbol.to_string(),
-        price,
-        volume_24h,
-        open_interest: volume_24h, // Using volume as proxy
-        funding_rate,
-    })
-}
-
 fn convert_levels_from_book(levels: &Vec<hyperliquid_rust_sdk::BookLevel>) -> Vec<Level> {
     levels.iter()
         .map(|level| Level {

@@ -1,17 +1,12 @@
-use ethers::signers::LocalWallet;
 use hyperliquid_rust_sdk::{
     BaseUrl, ClientLimit, ClientOrder, ClientOrderRequest, ExchangeClient,
-    ExchangeResponseStatus, InfoClient,
+    ExchangeResponseStatus, InfoClient, ClientCancelRequest,
 };
-use std::env;
 use anyhow::Result;
 use super::{OrderType, TradeRequest};
 use super::positions::Position;
 use ethers::signers::Signer;
 use super::wallet::WalletManager;
-use log;
-use reqwest::Client;
-use serde_json::json;
 
 pub struct HyperliquidService {
     info_client: InfoClient,
@@ -175,6 +170,57 @@ impl HyperliquidService {
             .collect();
             
         Ok(orders)
+    }
+
+    pub async fn cancel_order(&self, order_id: u64, asset: String) -> Result<ExchangeResponseStatus> {
+        let cancel_request = ClientCancelRequest {
+            asset,
+            oid: order_id,
+        };
+        
+        Ok(self.exchange_client.cancel(cancel_request, None).await?)
+    }
+
+    pub async fn close_position(&self, asset: String, size: f64) -> Result<ExchangeResponseStatus> {
+        // Create market order in opposite direction to close position
+        let close_request = TradeRequest {
+            asset: asset.clone(),
+            is_buy: size < 0.0,
+            usd_value: size.abs() * self.get_current_price(&asset).await?,
+            reduce_only: true,
+            order_type: OrderType::Market,
+            leverage: 1,
+            cross_margin: true,
+            price: None
+        };
+
+        self.place_trade(close_request).await
+    }
+
+    async fn get_current_price(&self, asset: &str) -> Result<f64> {
+        let orderbook = self.info_client.l2_snapshot(asset.to_string()).await?;
+        
+        // Get best bid/ask prices from the orderbook
+        let (best_bid, best_ask) = {
+            let best_bid = orderbook.levels.get(0)
+                .and_then(|levels| levels.first())
+                .map(|level| level.px.parse::<f64>())
+                .transpose()
+                .map_err(|_| anyhow::anyhow!("Failed to parse bid price"))?
+                .ok_or_else(|| anyhow::anyhow!("No bid price available"))?;
+
+            let best_ask = orderbook.levels.get(1)
+                .and_then(|levels| levels.first())
+                .map(|level| level.px.parse::<f64>())
+                .transpose()
+                .map_err(|_| anyhow::anyhow!("Failed to parse ask price"))?
+                .ok_or_else(|| anyhow::anyhow!("No ask price available"))?;
+
+            (best_bid, best_ask)
+        };
+
+        // Return mid price
+        Ok((best_bid + best_ask) / 2.0)
     }
 }
 

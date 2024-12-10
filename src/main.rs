@@ -6,7 +6,7 @@ use hl_aggregator::{
 use hl_aggregator::aggregator::types::OrderBook;
 use anyhow::Result;
 use tokio::time::{sleep, Duration};
-use std::io::{self, Write, stdin, Stdout};
+use std::io::{self, Write, Stdout};
 use hl_aggregator::trading::{OrderType, TradeRequest};
 use hl_aggregator::trading::hyperliquid_service::{HyperliquidService, OpenOrder};
 use hl_aggregator::trading::wallet::WalletManager;
@@ -29,6 +29,53 @@ use hl_aggregator::aggregator::types::{MarketData, MarketSummary};
 use env_logger;
 use hl_aggregator::trading::positions::Position;
 use ethers::signers::Signer;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use dydx::indexer::types::{OrderSide, OrderType as DydxOrderType};
+use dydx::node::OrderTimeInForce;
+use hl_aggregator::trading::OrderType as LocalOrderType;
+use hyperliquid_rust_sdk::ExchangeResponseStatus;
+use chrono;
+use env_logger::{Builder, Target};
+use log::LevelFilter;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use dydx::noble::NobleUsdc;
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
+use dydx::indexer::types::ApiOrderStatus;
+use hl_aggregator::trading::orders::Order;
+use dydx::indexer::OrderStatus;
+
+pub fn init_logging() {
+    let mut builder = Builder::from_default_env();
+    builder
+        .filter_module("dydx::indexer::sock::connector", LevelFilter::Off)
+        .target(Target::Stdout)
+        .init();
+}
+
+pub fn init_file_logging() {
+    let file_appender = RollingFileAppender::new(
+        Rotation::NEVER,
+        "logs",
+        "trading.log",
+    );
+
+    let subscriber = fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(file_appender)
+        .with_ansi(false)
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_line_number(true)
+        .with_file(true)
+        .with_level(true)
+        .compact()
+        .try_init()
+        .expect("Failed to set tracing subscriber");
+}
+
 enum MenuOption {
     ViewDydx,
     ViewHyperliquid,
@@ -67,14 +114,38 @@ struct App {
     hl_summary: Option<MarketSummary>,
     dydx_leverage: Option<f64>,
     hl_leverage: Option<f64>,
+    terminal: Arc<Mutex<Terminal<CrosstermBackend<Stdout>>>>,
+    positions: Vec<Position>,
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        // Cleanup terminal
+        if let Ok(mut terminal) = self.terminal.try_lock() {
+            let _ = terminal.show_cursor();
+            let _ = terminal.clear();
+            let _ = disable_raw_mode();
+            let _ = execute!(
+                terminal.backend_mut(),
+                LeaveAlternateScreen,
+            );
+        }
+    }
 }
 
 impl App {
     async fn new() -> Result<Self> {
         let config = AggregatorConfig::default();
         let aggregator = DerivativesAggregator::new(config).await?;
-        let wallet_manager = WalletManager::new()?;
+        let wallet_manager = WalletManager::new().await?;
         let hyperliquid_service = HyperliquidService::new(&wallet_manager).await?;
+        
+        // Initialize terminal
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen)?;
+        let backend = CrosstermBackend::new(stdout);
+        let terminal = Terminal::new(backend)?;
         
         Ok(Self {
             aggregator,
@@ -87,6 +158,8 @@ impl App {
             hl_summary: None,
             dydx_leverage: None,
             hl_leverage: None,
+            terminal: Arc::new(Mutex::new(terminal)),
+            positions: Vec::new(),
         })
     }
 
@@ -127,12 +200,29 @@ impl App {
             }
         }
         
+        // Update positions from both exchanges
+        let mut all_positions = Vec::new();
+        
+        // Get Hyperliquid positions
+        if let Ok(hl_positions) = self.hyperliquid_service.get_positions().await {
+            all_positions.extend(hl_positions);
+        }
+        
+        // Get dYdX positions
+        if let Ok(dydx_positions) = self.wallet_manager.get_dydx_positions().await {
+            all_positions.extend(dydx_positions);
+        }
+
+        // Update market data (we need to add positions field to MarketData)
+        self.positions = all_positions;  // Store positions directly in App instead of MarketData
+        
         Ok(())
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    init_file_logging();
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -143,8 +233,8 @@ async fn main() -> Result<()> {
     // Create app state
     let mut app = App::new().await?;
     
-    std::env::set_var("RUST_LOG", "info");
-    env_logger::init();
+    //std::env::set_var("RUST_LOG", "info");
+    //env_logger::init();
     
     loop {
         // Update market data first
@@ -172,29 +262,64 @@ async fn main() -> Result<()> {
                                     start_market_updates(&mut app.aggregator, &app.symbol).await?;
                                 },
                                 MenuOption::ViewPositions => {
-                                    if let Some(exchange) = &app.selected_exchange {
-                                        let wallet_manager = WalletManager::new()?;
-                                        let trading_service = HyperliquidService::new(&wallet_manager).await?;
-                                        let positions = trading_service.get_positions().await?;
-                                        
-                                        // Clear screen and show positions
-                                        terminal.clear()?;
-                                        terminal.draw(|f| {
-                                            Position::display_positions(f, &positions);
-                                        })?;
-                                        
-                                        // Wait for input to return to main menu
-                                        if let Event::Key(key) = event::read()? {
-                                            if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
-                                                continue;  // Return to main menu
-                                            }
+                                    let mut positions = Vec::new();
+                                    
+                                    // Get dYdX positions
+                                    if let Ok(dydx_positions) = app.wallet_manager.get_dydx_positions().await {
+                                        positions.extend(dydx_positions);
+                                    }
+                                    
+                                    // Get Hyperliquid positions
+                                    if let Ok(hl_positions) = app.hyperliquid_service.get_positions().await {
+                                        positions.extend(hl_positions);
+                                    }
+                                    
+                                    // Clear screen and show positions
+                                    terminal.clear()?;
+                                    terminal.draw(|f| {
+                                        Position::display_positions(f, &positions);
+                                    })?;
+                                    
+                                    // Wait for input to return to main menu
+                                    if let Event::Key(key) = event::read()? {
+                                        if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
+                                            continue;  // Return to main menu
                                         }
                                     }
                                 },
                                 MenuOption::ViewOpenOrders => {
-                                    let open_orders = app.hyperliquid_service.get_open_orders().await?;
-                                    display_open_orders(&mut terminal, &open_orders)?;
-                                    continue;
+                                    let mut orders = Vec::new();
+                                    
+                                    // Get dYdX orders
+                                    if let Ok(dydx_orders) = app.wallet_manager.get_dydx_orders().await {
+                                        // Filter for only open orders and convert to common Order type
+                                        let open_orders: Vec<_> = dydx_orders.into_iter()
+                                            .filter_map(|order| Order::from_dydx_order(&order).ok())
+                                            .filter(|order| order.status == "Open")
+                                            .collect();
+                                        orders.extend(open_orders);
+                                    }
+                                    
+                                    // Get Hyperliquid orders and convert to common Order type
+                                    if let Ok(hl_orders) = app.hyperliquid_service.get_open_orders().await {
+                                        let converted_orders: Vec<_> = hl_orders.into_iter()
+                                            .filter_map(|order| Order::from_hl_order(&order).ok())
+                                            .collect();
+                                        orders.extend(converted_orders);
+                                    }
+                                    
+                                    // Clear screen and display orders
+                                    terminal.clear()?;
+                                    terminal.draw(|f| {
+                                        Order::display_orders(f, &orders);
+                                    })?;
+                                    
+                                    // Wait for input to return to main menu
+                                    if let Event::Key(key) = event::read()? {
+                                        if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
+                                            continue;
+                                        }
+                                    }
                                 },
                                 MenuOption::ChangeSymbol => {
                                     disable_raw_mode()?;
@@ -250,12 +375,8 @@ async fn start_market_updates(aggregator: &mut DerivativesAggregator, symbol: &s
 }
 
 async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> {
-    
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
-    
-    let wallet_manager = WalletManager::new()?;
-    let trading_service = HyperliquidService::new(&wallet_manager).await?;
     
     let mut log_message = None;
     
@@ -358,16 +479,53 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                             cross_margin,
                         };
 
-                        match trading_service.place_trade(request).await {
-                            Ok(response) => {
-                                log_message = Some(format!("Trade placed successfully: {:?}", response));
+                        // Route to correct exchange
+                        let result = match exchange {
+                            "dYdX" => {
+                                // Convert local OrderType to dYdX OrderType
+                                let dydx_order_type = match request.order_type {
+                                    LocalOrderType::Market => DydxOrderType::Market,
+                                    LocalOrderType::Limit => DydxOrderType::Limit,
+                                };
+
+                                app.wallet_manager.place_dydx_order(
+                                    &symbol,
+                                    if request.is_buy { OrderSide::Buy } else { OrderSide::Sell },
+                                    request.usd_value,
+                                    request.price,
+                                    dydx_order_type,
+                                    OrderTimeInForce::Ioc,
+                                    leverage as f64,
+                                ).await
+                            },
+                            "Hyperliquid" => {
+                                app.hyperliquid_service.place_trade(request).await
+                                    .map(|response| match response {
+                                        ExchangeResponseStatus::Ok(response) => response.response_type,
+                                        ExchangeResponseStatus::Err(message) => message,
+                                        _ => "Unknown response status".to_string()
+                                    })
+                            },
+                            _ => Err(anyhow::anyhow!("Unknown exchange: {}", exchange))
+                        };
+
+                        match result {
+                            Ok(tx_hash) => {
+                                log_message = Some(format!("Trade placed successfully: {}", tx_hash));
                             },
                             Err(e) => {
-                                log_message = Some(format!("Error placing trade: {}", e));
+                                let error_msg = format!(
+                                    "Error placing trade:\n\
+                                     {}\n\
+                                     Time: {}",
+                                    e,
+                                    chrono::Local::now().format("%H:%M:%S")
+                                );
+                                log_message = Some(error_msg);
                             }
                         }
                     },
-                    KeyCode::Char('q') | KeyCode::Esc => {
+                    KeyCode::Char('5') | KeyCode::Esc => {
                         terminal.clear()?;
                         return Ok(());
                     },
@@ -420,10 +578,10 @@ fn ui(f: &mut ratatui::Frame<'_>, app: &App) {
     // dYdX Summary
     let dydx_summary = match &app.dydx_summary {
         Some(summary) => format!(
-            "dYdX - {}\nPrice: ${:.2}\n24h Volume: ${:.2}M\nMax Leverage: {}\nFunding: {:.4}%",
+            "dYdX - {}\nPrice: ${}\n24h Volume: {}\nMax Leverage: {}\nFunding: {:.4}%",
             app.symbol,
             summary.price,
-            summary.volume_24h / 1_000_000.0,
+            format_volume(summary.volume_24h),
             app.dydx_leverage.map_or_else(|| "N/A".to_string(), |l| format!("{:.0}x", l)),
             summary.funding_rate * 100.0
         ),
@@ -437,10 +595,10 @@ fn ui(f: &mut ratatui::Frame<'_>, app: &App) {
     // Hyperliquid Summary
     let hl_summary = match &app.hl_summary {
         Some(summary) => format!(
-            "Hyperliquid - {}\nPrice: ${:.2}\n24h Volume: ${:.2}M\nMax Leverage: {}\nFunding: {:.4}%",
+            "Hyperliquid - {}\nPrice: ${}\n24h Volume: {}\nMax Leverage: {}\nFunding: {:.4}%",
             app.symbol,
             summary.price,
-            summary.volume_24h / 1_000_000.0,
+            format_volume(summary.volume_24h),
             app.hl_leverage.map_or_else(|| "N/A".to_string(), |l| format!("{:.0}x", l)),
             summary.funding_rate * 100.0
         ),
@@ -458,9 +616,9 @@ fn ui(f: &mut ratatui::Frame<'_>, app: &App) {
         // Helper function to format price with dynamic decimal places
         let format_price = |price: f64| -> String {
             if price < 10.0 {
-                format!("${:>10.6}", price)
+                format!("${:.6}", price)
             } else {
-                format!("${:>10.2}", price)
+                format!("${:.2}", price)
             }
         };
         
@@ -474,14 +632,6 @@ fn ui(f: &mut ratatui::Frame<'_>, app: &App) {
                 ask.size,
                 format_price(ask.price)
             ));
-        }
-        
-        // Show spread
-        if let (Some(lowest_ask), Some(highest_bid)) = (orderbook.asks.first(), orderbook.bids.first()) {
-            let spread = lowest_ask.price - highest_bid.price;
-            orderbook_text.push_str("\x1b[0m------------------------------\n");
-            orderbook_text.push_str(&format!("Spread: {}\n", format_price(spread)));
-            orderbook_text.push_str("------------------------------\n");
         }
         
         // Display bids in green
@@ -509,51 +659,6 @@ fn format_volume(volume: f64) -> String {
         format!("${:.2}K", volume / 1_000.0)
     } else {
         format!("${:.2}", volume)
-    }
-}
-
-#[derive(Default)]
-struct WalletInfo {
-    address: Option<String>,
-    private_key: Option<String>,
-    account_value: f64,
-    margin_used: f64,
-    usdc_balance: f64,
-    log_messages: Vec<String>,
-}
-
-async fn confirm_action(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, message: &str) -> Result<bool> {
-    terminal.clear()?;
-    
-    // Create a Rect from the terminal size
-    let size = terminal.size()?;
-    let area = Rect::new(0, 0, size.width, size.height);
-    
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(0),
-        ])
-        .split(area);
-
-    terminal.draw(|f| {
-        let confirm = Paragraph::new(format!("{} (y/n)", message))
-            .block(Block::default().borders(Borders::ALL))
-            .alignment(ratatui::layout::Alignment::Center);
-        f.render_widget(confirm, layout[0]);
-    })?;
-
-    loop {
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('y') | KeyCode::Char('Y') => return Ok(true),
-                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => return Ok(false),
-                    _ => {}
-                }
-            }
-        }
     }
 }
 
@@ -622,11 +727,11 @@ fn trading_ui(f: &mut ratatui::Frame<'_>, symbol: &str, exchange: &str, orderboo
             ));
         }
         
-        // Show spread
+        // Show market price
         if let (Some(lowest_ask), Some(highest_bid)) = (orderbook.asks.first(), orderbook.bids.first()) {
-            let spread = lowest_ask.price - highest_bid.price;
+            let market_price = (lowest_ask.price + highest_bid.price) / 2.0;
             orderbook_text.push_str("\x1b[0m------------------------------\n");
-            orderbook_text.push_str(&format!("Spread: {}\n", format_price(spread)));
+            orderbook_text.push_str(&format!("Market Price: ${:.2}\n", market_price));
             orderbook_text.push_str("------------------------------\n");
         }
         
@@ -723,8 +828,12 @@ fn display_open_orders(terminal: &mut Terminal<CrosstermBackend<Stdout>>, orders
 
 async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
     loop {
-        // Get wallet info
+        // Initialize dYdX client before getting balance
+        app.wallet_manager.init_dydx_client().await?;
+        
+        // Get wallet info and dYdX balance
         let wallet_info = app.wallet_manager.get_wallet_info().await?;
+        let dydx_balance = app.wallet_manager.get_dydx_balance().await?;
         
         // Draw UI
         terminal.draw(|f| {
@@ -732,10 +841,10 @@ async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<
                 .direction(Direction::Vertical)
                 .margin(1)
                 .constraints([
-                    Constraint::Length(3),    // Title
-                    Constraint::Length(8),    // Wallet Status
-                    Constraint::Length(7),    // Options Menu
-                    Constraint::Length(3),    // Input Prompt
+                    Constraint::Length(3),     // Title
+                    Constraint::Length(12),    // Wallet Status (increased from 8)
+                    Constraint::Length(8),     // Options Menu
+                    Constraint::Length(3),     // Input Prompt
                 ].as_ref())
                 .split(f.size());
 
@@ -750,8 +859,10 @@ async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<
             if let Some(wallet) = app.wallet_manager.get_wallet() {
                 status_text.push_str(&format!("ETH Address: {:#x}\n", wallet.address()));
                 status_text.push_str(&format!("USDC Balance: ${:.2}\n", wallet_info.4));
-                status_text.push_str(&format!("Account Value: ${:.2}\n", wallet_info.2));
-                status_text.push_str(&format!("Margin Used: ${:.2}\n", wallet_info.3));
+                status_text.push_str(&format!("Hyperliquid Portifolio Value: ${:.2}\n", wallet_info.2));
+                status_text.push_str(&format!("Hyperliquid Margin Used: ${:.2}\n", wallet_info.3));
+                let hl_balance = wallet_info.2 - wallet_info.3;
+                status_text.push_str(&format!("Hyperliquid Balance: ${:.2}\n", hl_balance));
             } else {
                 status_text.push_str("No ETH wallet configured\n");
             }
@@ -759,6 +870,9 @@ async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<
             if let Some(dydx_wallet) = app.wallet_manager.get_dydx_wallet() {
                 if let Ok(account) = dydx_wallet.account_offline(0) {
                     status_text.push_str(&format!("dYdX Address: {}\n", account.address()));
+                    if let Some(balance) = dydx_balance {
+                        status_text.push_str(&format!("dYdX Balance: ${:.2}\n", balance));
+                    }
                 }
             } else {
                 status_text.push_str("No dYdX wallet configured\n");
@@ -774,13 +888,14 @@ async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<
                  2. Import Existing ETH Wallet\n\
                  3. Create New dYdX Wallet\n\
                  4. Import Existing dYdX Wallet\n\
-                 5. Back to Main Menu"
+                 5. Bridge USDC to dYdX\n\
+                 6. Back to Main Menu"
             )
             .block(Block::default().borders(Borders::ALL).title("Options"));
             f.render_widget(options, chunks[2]);
 
             // Input Prompt
-            let prompt = Paragraph::new("Enter choice (1-5): ")
+            let prompt = Paragraph::new("Enter choice (1-6): ")
                 .block(Block::default().borders(Borders::ALL));
             f.render_widget(prompt, chunks[3]);
         })?;
@@ -792,11 +907,44 @@ async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<
                 KeyCode::Char('2') => app.wallet_manager.import_eth_wallet().await?,
                 KeyCode::Char('3') => app.wallet_manager.create_dydx_wallet().await?,
                 KeyCode::Char('4') => app.wallet_manager.import_dydx_wallet().await?,
-                KeyCode::Char('5') | KeyCode::Char('q') | KeyCode::Esc => break,
+                KeyCode::Char('5') => {
+                    // Bridge USDC
+                    terminal.clear()?;
+                    disable_raw_mode()?;
+                    
+                    print!("Enter USDC amount to bridge: ");
+                    io::stdout().flush()?;
+                    
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+                    let amount = input.trim().parse::<f64>()?;
+                    
+                    println!("Initiating bridge of {} USDC to dYdX...", amount);
+                    app.wallet_manager.bridge_to_dydx(amount).await?;
+                    
+                    println!("\nPress Enter to continue...");
+                    io::stdin().read_line(&mut input)?;
+                    
+                    enable_raw_mode()?;
+                    terminal.clear()?;
+                },
+                KeyCode::Char('6') | KeyCode::Char('q') | KeyCode::Esc => {
+                    // Clear screen before exiting
+                    terminal.clear()?;
+                    break;
+                },
                 _ => {}
             }
         }
     }
+
+    // Ensure terminal is properly reset before returning to main menu
+    terminal.clear()?;
+    terminal.draw(|f| {
+        // Draw empty frame to ensure clean state
+        let block = Block::default();
+        f.render_widget(block, f.size());
+    })?;
 
     Ok(())
 }
