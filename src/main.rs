@@ -76,7 +76,7 @@ pub fn init_file_logging() {
         .expect("Failed to set tracing subscriber");
 }
 
-enum MenuOption {
+pub enum MenuOption {
     ViewDydx,
     ViewHyperliquid,
     ViewPositions,
@@ -290,9 +290,8 @@ async fn main() -> Result<()> {
                                 MenuOption::ViewOpenOrders => {
                                     let mut orders = Vec::new();
                                     
-                                    // Get dYdX orders
+                                    // Collect orders (same as before)
                                     if let Ok(dydx_orders) = app.wallet_manager.get_dydx_orders().await {
-                                        // Filter for only open orders and convert to common Order type
                                         let open_orders: Vec<_> = dydx_orders.into_iter()
                                             .filter_map(|order| Order::from_dydx_order(&order).ok())
                                             .filter(|order| order.status == "Open")
@@ -308,16 +307,57 @@ async fn main() -> Result<()> {
                                         orders.extend(converted_orders);
                                     }
                                     
-                                    // Clear screen and display orders
-                                    terminal.clear()?;
-                                    terminal.draw(|f| {
-                                        Order::display_orders(f, &orders);
-                                    })?;
-                                    
-                                    // Wait for input to return to main menu
-                                    if let Event::Key(key) = event::read()? {
-                                        if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
-                                            continue;
+                                    loop {
+                                        terminal.clear()?;
+                                        terminal.draw(|f| {
+                                            Order::display_orders(f, &orders);
+                                        })?;
+                                        
+                                        if let Event::Key(key) = event::read()? {
+                                            match key.code {
+                                                KeyCode::Char('q') => break,
+                                                KeyCode::Char(c) => {
+                                                    if let Some(num) = c.to_digit(10) {
+                                                        if num > 0 && num <= orders.len() as u32 {
+                                                            let order = &orders[num as usize - 1];
+                                                            
+                                                            // Show confirmation prompt
+                                                            terminal.clear()?;
+                                                            terminal.draw(|f| {
+                                                                let confirm_text = format!(
+                                                                    "Are you sure you want to cancel this {} order?\nSize: {} {}\nPrice: ${:.2}\nSide: {}\n\nPress 'y' to confirm, any other key to cancel",
+                                                                    order.exchange, order.size, order.asset, order.price, order.side
+                                                                );
+                                                                let confirm = Paragraph::new(confirm_text)
+                                                                    .block(Block::default().borders(Borders::ALL).title("Confirm Cancel"));
+                                                                f.render_widget(confirm, f.area());
+                                                            })?;
+                                                            
+                                                            if let Event::Key(confirm_key) = event::read()? {
+                                                                if matches!(confirm_key.code, KeyCode::Char('y')) {
+                                                                    match order.exchange.as_str() {
+                                                                        "dYdX" => {
+                                                                            if let Err(e) = app.wallet_manager.cancel_dydx_order(&order.order_id).await {
+                                                                                eprintln!("Error canceling dYdX order: {}", e);
+                                                                            }
+                                                                        },
+                                                                        "Hyperliquid" => {
+                                                                            if let Err(e) = app.hyperliquid_service.cancel_order(
+                                                                                order.order_id.parse::<u64>().unwrap_or_default(), 
+                                                                                order.asset.clone()
+                                                                            ).await {
+                                                                                eprintln!("Error canceling Hyperliquid order: {}", e);
+                                                                            }
+                                                                        },
+                                                                        _ => {}
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                _ => {}
+                                            }
                                         }
                                     }
                                 },
@@ -501,9 +541,9 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                             "Hyperliquid" => {
                                 app.hyperliquid_service.place_trade(request).await
                                     .map(|response| match response {
-                                        ExchangeResponseStatus::Ok(response) => response.response_type,
-                                        ExchangeResponseStatus::Err(message) => message,
-                                        _ => "Unknown response status".to_string()
+                                        ExchangeResponseStatus::Ok(response) => (response.response_type, String::new()),
+                                        ExchangeResponseStatus::Err(message) => (message, String::new()),
+                                        _ => ("Unknown response status".to_string(), String::new())
                                     })
                             },
                             _ => Err(anyhow::anyhow!("Unknown exchange: {}", exchange))
@@ -511,7 +551,7 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
 
                         match result {
                             Ok(tx_hash) => {
-                                log_message = Some(format!("Trade placed successfully: {}", tx_hash));
+                                log_message = Some(format!("Trade placed successfully: {} {}", tx_hash.0, tx_hash.1));
                             },
                             Err(e) => {
                                 let error_msg = format!(

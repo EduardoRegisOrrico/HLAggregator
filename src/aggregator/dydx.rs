@@ -84,6 +84,20 @@ impl ExchangeAggregator for DydxAggregator {
                         while let Some(message) = feed.recv().await {
                             match message {
                                 OrdersMessage::Initial(initial) => {
+                                    let mut asks = initial.contents.asks.into_iter()
+                                        .map(|level| Level {
+                                            price: level.price.0.to_f64().unwrap_or(0.0),
+                                            size: level.size.0.to_f64().unwrap_or(0.0),
+                                            orders: 1,
+                                        })
+                                        .collect::<Vec<Level>>();
+
+                                    // Sort asks by price (lowest to highest)
+                                    asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal));
+
+                                    // Take only the first 5 asks
+                                    asks.truncate(5);
+
                                     let new_book = OrderBook {
                                         exchange: "dYdX".to_string(),
                                         symbol: symbol_clone.clone(),
@@ -94,13 +108,7 @@ impl ExchangeAggregator for DydxAggregator {
                                                 orders: 1,
                                             })
                                             .collect(),
-                                        asks: initial.contents.asks.into_iter()
-                                            .map(|level| Level {
-                                                price: level.price.0.to_f64().unwrap_or(0.0),
-                                                size: level.size.0.to_f64().unwrap_or(0.0),
-                                                orders: 1,
-                                            })
-                                            .collect(),
+                                        asks,
                                         timestamp: Utc::now().timestamp_millis() as u64,
                                     };
                                     *orderbook.lock().await = Some(new_book);
@@ -145,9 +153,14 @@ impl ExchangeAggregator for DydxAggregator {
                                             }
                                         }
 
-                                        // Sort the books
-                                        book.bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
-                                        book.asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
+                                        // Sort and limit asks to 5 closest to market price
+                                        book.asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal));
+                                        book.asks.truncate(10);
+
+                                        // Sort bids highest to lowest
+                                        book.bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap_or(std::cmp::Ordering::Equal));
+                                        book.bids.truncate(10);
+
                                         book.timestamp = Utc::now().timestamp_millis() as u64;
                                     }
                                 }

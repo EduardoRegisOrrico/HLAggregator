@@ -1,4 +1,4 @@
-use dydx::indexer::types::{OrderResponseObject, OrderSide, OrderStatus, ApiOrderStatus};
+use dydx::indexer::types::{OrderResponseObject, OrderSide, OrderStatus, ApiOrderStatus, OrderFlags};
 use crate::trading::hyperliquid_service::OpenOrder;
 use anyhow::Result;
 use num_traits::ToPrimitive;
@@ -15,6 +15,7 @@ pub struct Order {
     pub price: f64,
     pub side: String,
     pub status: String,
+    pub order_id: String,
 }
 
 impl Order {
@@ -38,6 +39,16 @@ impl Order {
                 },
                 ApiOrderStatus::BestEffort(_) => "BestEffort".to_string(),
             },
+            order_id: format!("{}:{}:{}:{}",
+                order.client_id.0,
+                order.clob_pair_id.0,
+                match order.order_flags {
+                    OrderFlags::ShortTerm => 0,
+                    OrderFlags::Conditional => 32,
+                    OrderFlags::LongTerm => 64,
+                },
+                order.subaccount_id.0
+            ),
         })
     }
 
@@ -52,6 +63,7 @@ impl Order {
                 _ => "Sell".to_string(),
             },
             status: "Open".to_string(),
+            order_id: order.order_id.to_string(),
         })
     }
 
@@ -77,7 +89,7 @@ impl Order {
         f.render_widget(title_widget, chunks[0]);
 
         // Calculate height for each order
-        let order_height = 5; // Increased from 4 to accommodate the extra line
+        let order_height = 4;
         let order_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints(
@@ -91,7 +103,8 @@ impl Order {
         for (idx, order) in orders.iter().enumerate() {
             let usd_value = order.size * order.price;
             let order_text = format!(
-                "Size: {} {} | Value: ${:.2}\nPrice: ${:.2}\nSide: {}\nStatus: {}",
+                "#{}: Size: {} {} | Value: ${:.2}\nPrice: ${:.2}\nSide: {}\nStatus: {}",
+                idx + 1,
                 order.size,
                 order.asset,
                 usd_value,
@@ -108,7 +121,7 @@ impl Order {
         }
 
         // Menu
-        let menu = Paragraph::new("Press 'q' to return to main menu")
+        let menu = Paragraph::new("Press 'q' to return to main menu, type id to cancel/close")
             .block(Block::default().borders(Borders::ALL))
             .alignment(ratatui::layout::Alignment::Center);
         f.render_widget(menu, chunks[2]);

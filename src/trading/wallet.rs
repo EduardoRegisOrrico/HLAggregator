@@ -36,6 +36,7 @@ use tonic::transport::{Channel, ClientTlsConfig};
 use tokio::time::Duration;
 use ethers::types::Address;
 use crate::trading::positions::Position;
+use dydx_proto::dydxprotocol::subaccounts::SubaccountId;
 
 const ARBITRUM_RPC: &str = "https://arbitrum.llamarpc.com";
 const USDC_ADDRESS: &str = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"; // Arbitrum USDC
@@ -85,20 +86,18 @@ const TOKEN_MESSENGER_ABI: &str = r#"[
 ]"#;
 const MESSAGE_TRANSMITTER_ADDRESS: &str = "0xc30362313fbba5cf9163f0bb16a0e01f01a896ca";
 const CIRCLE_BRIDGE_ADDRESS: &str = "0x19330d10d9cc8751218eaf51e8885d058642e08a";
-const DESTINATION_CALLER: &str = "0x691cf4641d5608f085b2c1921172120bb603d074";
+const DESTINATION_CALLER: &str = "0x0000000000000000000000000000000000000000";
 const DESTINATION_TOKEN_MESSENGER: &str = "0x57d4eaf1091577a6b7d121202afbd2808134f117";
 const CIRCLE_BRIDGE_ABI: &str = r#"[
     {
         "inputs": [
-            {"internalType": "uint256", "name": "amount", "type": "uint256"},
-            {"internalType": "uint32", "name": "destinationDomain", "type": "uint32"},
-            {"internalType": "bytes32", "name": "recipient", "type": "bytes32"},
-            {"internalType": "address", "name": "token", "type": "address"},
-            {"internalType": "uint256", "name": "fee", "type": "uint256"},
-            {"internalType": "bytes32", "name": "destinationCaller", "type": "bytes32"}
+            {"type": "uint256", "name": "amount"},
+            {"type": "uint32", "name": "destinationDomain"},
+            {"type": "bytes32", "name": "mintRecipient"},
+            {"type": "address", "name": "burnToken"}
         ],
-        "name": "depositForBurnWithCaller",
-        "outputs": [{"internalType": "uint64", "name": "", "type": "uint64"}],
+        "name": "depositForBurn",
+        "outputs": [{"type": "uint64", "name": "nonce"}],
         "stateMutability": "nonpayable",
         "type": "function"
     }
@@ -531,65 +530,30 @@ impl WalletManager {
         order_type: OrderType,
         time_in_force: OrderTimeInForce,
         leverage: f64,
-    ) -> Result<String> {
-        // First reinitialize the service
-        self.init_dydx_service().await?;
-        
-        // Verify wallet state
-        if self.dydx_wallet.is_none() {
-            return Err(anyhow::anyhow!("dYdX wallet not initialized"));
-        }
-
+    ) -> Result<(String, String)> {
         if let Some(ref mut dydx_service) = self.dydx_service {
-            if let Some(ref dydx_wallet) = self.dydx_wallet {
-                // Get a new client connection
-                let config = ClientConfig::from_file("./src/bridge_config/mainnet.toml").await?;
-                // Clone the node config before first use
-                let node_config = config.node.clone();
-                let mut client = NodeClient::connect(node_config.clone()).await?;
-                
-                // Get the latest account with proper sequence
-                let account = dydx_wallet.account(0, &mut client).await?;
-                
-                // Create DydxService with the new client and account
-                let service = DydxService::new(
-                    node_config,  // Use the cloned config
-                    IndexerConfig {
-                        rest: RestConfig {
-                            endpoint: "https://indexer.dydx.trade".to_string(),
-                        },
-                        sock: SockConfig {
-                            endpoint: "wss://indexer.dydx.trade/v4/ws".to_string(),
-                            timeout: 1000,
-                            rate_limit: std::num::NonZeroU32::new(2).unwrap(),
-                        },
-                    },
-                    account,
-                ).await?;
-                
-                // Replace the existing service
-                self.dydx_service = Some(service);
-                
-                // Now place the trade with the newly initialized service
-                if let Some(ref mut dydx_service) = self.dydx_service {
-                    let leverage = leverage;
-                    Ok(dydx_service.place_trade(TradeRequest {
-                        asset: market.to_string(),
-                        is_buy: matches!(side, OrderSide::Buy),
-                        size,
-                        price,
-                        order_type,
-                        reduce_only: false,
-                        leverage,
-                    }, leverage).await?)
-                } else {
-                    Err(anyhow::anyhow!("DydxService not initialized"))
-                }
-            } else {
-                Err(anyhow::anyhow!("DydxWallet not initialized"))
-            }
+            let (tx_hash, order_id) = dydx_service.place_trade(TradeRequest {
+                asset: market.to_string(),
+                is_buy: matches!(side, OrderSide::Buy),
+                size,
+                price,
+                order_type,
+                reduce_only: false,
+                leverage,
+            }, leverage).await?;
+            
+            // Format order ID as "client_id:clob_pair_id:order_flags:subaccount_id"
+            let formatted_order_id = format!(
+                "{}:{}:{}:{}",
+                order_id.client_id,
+                order_id.clob_pair_id,
+                order_id.order_flags,
+                order_id.subaccount_id.unwrap_or_default().number
+            );
+            
+            Ok((tx_hash, formatted_order_id))
         } else {
-            Err(anyhow::anyhow!("DydxService not initialized"))
+            Err(anyhow::anyhow!("dYdX service not initialized"))
         }
     }
 
@@ -626,7 +590,7 @@ impl WalletManager {
 
     pub async fn bridge_to_dydx(&self, amount: f64) -> Result<()> {
         // Open log file with timestamp
-        let log_path = "bridge.log";
+        let log_path = "./logs/bridge.log";
         let mut log_file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -650,21 +614,21 @@ impl WalletManager {
                 wallet_with_chain_id,
             ));
 
-            // Initialize USDC contract
-            let usdc_address: Address = USDC_ADDRESS.parse()?;
-            let usdc_abi: ethers::abi::Abi = serde_json::from_str(USDC_ABI)?;
-            let usdc_contract = Contract::new(
-                usdc_address,
-                usdc_abi,
-                client_with_signer.clone()
-            );
-
             // Initialize Circle Bridge contract
             let circle_bridge_address: Address = CIRCLE_BRIDGE_ADDRESS.parse()?;
             let circle_bridge_abi: ethers::abi::Abi = serde_json::from_str(CIRCLE_BRIDGE_ABI)?;
             let circle_bridge_contract = Contract::new(
                 circle_bridge_address,
                 circle_bridge_abi,
+                client_with_signer.clone()
+            );
+
+            // Initialize USDC contract
+            let usdc_address: Address = USDC_ADDRESS.parse()?;
+            let usdc_abi: ethers::abi::Abi = serde_json::from_str(USDC_ABI)?;
+            let usdc_contract = Contract::new(
+                usdc_address,
+                usdc_abi,
                 client_with_signer
             );
 
@@ -673,10 +637,8 @@ impl WalletManager {
             writeln!(log_file, "Circle Bridge Address: {}", CIRCLE_BRIDGE_ADDRESS)?;
 
             // Convert and log amount details
-            let amount_in_usdc = (amount * 1_000_000.0) as u64;
-            let amount_in_wei = U256::from(amount_in_usdc);
-            writeln!(log_file, "Amount in USDC (with 6 decimals): {}", amount_in_usdc)?;
-            writeln!(log_file, "Amount in Wei: {}", amount_in_wei)?;
+            let amount_in_wei = U256::from((amount * 1_000_000.0) as u64);
+            writeln!(log_file, "Amount in USDC (with 6 decimals): {}", amount_in_wei)?;
 
             // Check and log allowance
             let allowance: U256 = usdc_contract
@@ -685,39 +647,51 @@ impl WalletManager {
                 .await?;
             writeln!(log_file, "Current USDC Allowance: {}", allowance)?;
 
+            // Check if allowance is sufficient
             if allowance < amount_in_wei {
+                writeln!(log_file, "Insufficient allowance. Current: {}, Required: {}", allowance, amount_in_wei)?;
                 writeln!(log_file, "Approving USDC spend...")?;
                 let approve_tx = usdc_contract
-                    .method::<_, bool>("approve", (circle_bridge_address, amount_in_wei))?
+                    .method::<_, bool>(
+                        "approve",
+                        (circle_bridge_address, U256::from(2).pow(U256::from(256)) - U256::from(1)),
+                    )?
                     .send()
                     .await?
                     .await?;
                 writeln!(log_file, "USDC Approval TX: {:?}", approve_tx)?;
+                
+                // Verify new allowance
+                let new_allowance: U256 = usdc_contract
+                    .method::<_, U256>("allowance", (wallet.address(), circle_bridge_address))?
+                    .call()
+                    .await?;
+                writeln!(log_file, "New USDC Allowance: {}", new_allowance)?;
             } else {
                 writeln!(log_file, "USDC spending already approved")?;
             }
 
-            // Get and log dYdX recipient details
+            // Check USDC balance
+            let balance: U256 = usdc_contract
+                .method::<_, U256>("balanceOf", wallet.address())?
+                .call()
+                .await?;
+            writeln!(log_file, "Current USDC Balance: {}", balance)?;
+
+            if balance < amount_in_wei {
+                return Err(anyhow::anyhow!("Insufficient USDC balance. Have: {}, Need: {}", balance, amount_in_wei));
+            }
+
+            // Get dYdX recipient details
             let dydx_recipient = if let Some(dydx_wallet) = &self.dydx_wallet {
                 if let Ok(account) = dydx_wallet.account_offline(0) {
                     let address_str = account.address().to_string();
                     writeln!(log_file, "dYdX Recipient Address (bech32): {}", address_str)?;
                     
-                    // Decode bech32 address
-                    let (_, data, _) = bech32::decode(&address_str)
-                        .map_err(|e| anyhow::anyhow!("Failed to decode bech32 address: {}", e))?;
-                    
-                    // Convert 5-bit bytes to 8-bit bytes
-                    let address_bytes = bech32::convert_bits(&data, 5, 8, false)
-                        .map_err(|_| anyhow::anyhow!("Failed to convert address bytes"))?;
-                    
-                    // Create 32-byte array and copy address bytes
+                    let (_, data, _) = bech32::decode(&address_str)?;
+                    let address_bytes = bech32::convert_bits(&data, 5, 8, false)?;
                     let mut recipient_bytes = [0u8; 32];
-                    if address_bytes.len() != 20 {
-                        return Err(anyhow::anyhow!("Invalid address length: {}", address_bytes.len()));
-                    }
-                    recipient_bytes[12..32].copy_from_slice(&address_bytes);
-                    
+                    recipient_bytes[12..].copy_from_slice(&address_bytes);
                     writeln!(log_file, "Recipient Bytes (hex): 0x{}", hex::encode(&recipient_bytes))?;
                     H256::from(recipient_bytes)
                 } else {
@@ -732,19 +706,41 @@ impl WalletManager {
             };
 
             writeln!(log_file, "Initiating bridge transfer...")?;
-            let destination_caller = H256::from_str(DESTINATION_CALLER)?;
-            let bridge_tx = circle_bridge_contract
+
+            // Log all parameters before sending
+            writeln!(log_file, "Transaction Parameters:")?;
+            writeln!(log_file, "Amount: {}", amount_in_wei)?;
+            writeln!(log_file, "Destination Domain: {}", 4u32)?;
+            writeln!(log_file, "Recipient: 0x{}", hex::encode(dydx_recipient.as_bytes()))?;
+            writeln!(log_file, "Token Address: {}", usdc_address)?;
+
+            // Estimate gas and send the transaction
+            let gas_estimate = circle_bridge_contract
                 .method::<_, u64>(
-                    "depositForBurnWithCaller",
+                    "depositForBurn",
                     (
                         amount_in_wei,
-                        4u32, // destination domain
+                        4u32,
                         dydx_recipient,
                         usdc_address,
-                        U256::zero(), // fee
-                        destination_caller,
-                    )
+                    ),
                 )?
+                .estimate_gas()
+                .await?;
+
+            writeln!(log_file, "Estimated gas: {}", gas_estimate)?;
+
+            let bridge_tx = circle_bridge_contract
+                .method::<_, u64>(
+                    "depositForBurn",
+                    (
+                        amount_in_wei,
+                        4u32,
+                        dydx_recipient,
+                        usdc_address,
+                    ),
+                )?
+                .gas(gas_estimate.as_u64() + 50_000) // Add buffer to estimated gas
                 .send()
                 .await?
                 .await?;
@@ -758,6 +754,47 @@ impl WalletManager {
             let err = "No ETH wallet configured";
             writeln!(log_file, "Error: {}", err)?;
             Err(anyhow::anyhow!(err))
+        }
+    }
+
+    pub async fn cancel_dydx_order(&mut self, order_id: &str) -> Result<String> {
+        if let Some(dydx_service) = &mut self.dydx_service {
+            // Parse the order_id string into OrderId components
+            let parts: Vec<&str> = order_id.split(':').collect();
+            if parts.len() != 4 {
+                return Err(anyhow::anyhow!("Invalid order ID format"));
+            }
+            
+            let client_id = parts[0].parse::<u32>()
+                .map_err(|_| anyhow::anyhow!("Invalid client ID"))?;
+            let clob_pair_id = parts[1].parse::<u32>()
+                .map_err(|_| anyhow::anyhow!("Invalid CLOB pair ID"))?;
+            let order_flags = parts[2].parse::<u32>()
+                .map_err(|_| anyhow::anyhow!("Invalid order flags"))?;
+            let subaccount_id = parts[3].parse::<u32>()
+                .map_err(|_| anyhow::anyhow!("Invalid subaccount ID"))?;
+
+            // Create the OrderId struct with all required fields
+            let order_id = dydx::node::OrderId {
+                client_id,
+                clob_pair_id,
+                order_flags,
+                subaccount_id: Some(SubaccountId {
+                    owner: self.dydx_wallet
+                        .as_ref()
+                        .unwrap()
+                        .account_offline(0)
+                        .unwrap()
+                        .address()
+                        .to_string(),
+                    number: subaccount_id,
+                }),
+            };
+
+            dydx_service.cancel_order(order_id).await
+                .map_err(|e| anyhow::anyhow!("Failed to cancel dYdX order: {}", e))
+        } else {
+            Err(anyhow::anyhow!("dYdX service not initialized"))
         }
     }
 }

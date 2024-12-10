@@ -16,6 +16,8 @@ use chrono::{TimeDelta, Utc};
 use dydx::node::OrderSide as NodeOrderSide;
 use std::str::FromStr;
 use dydx::indexer::Ticker;
+use tokio::time::sleep;
+use std::time::Duration;
 
 pub use dydx::indexer::PerpetualPositionResponseObject;
 pub use dydx::indexer::{RestConfig, SockConfig};
@@ -74,6 +76,7 @@ impl From<bigdecimal::ParseBigDecimalError> for DydxServiceError {
     }
 }
 
+#[derive(Clone)]
 pub struct TradeRequest {
     pub asset: String,
     pub is_buy: bool,
@@ -101,7 +104,39 @@ impl DydxService {
     }
 
     /// Place a new order
-    pub async fn place_trade(&mut self, request: TradeRequest, leverage: f64) -> Result<String, DydxServiceError> {
+    pub async fn place_trade(&mut self, request: TradeRequest, leverage: f64) -> Result<(String, OrderId), DydxServiceError> {
+        const MAX_RETRIES: u32 = 3;
+        const RETRY_DELAY: Duration = Duration::from_secs(2);
+        
+        let mut last_error = None;
+        
+        for attempt in 0..MAX_RETRIES {
+            if attempt > 0 {
+                tracing::warn!("Retrying order placement attempt {}/{}", attempt + 1, MAX_RETRIES);
+                sleep(RETRY_DELAY).await;
+            }
+
+            match self.try_place_trade(request.clone(), leverage).await {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    tracing::error!("Order placement attempt {} failed: {:?}", attempt + 1, &e);
+                    last_error = Some(e);
+                    
+                    if matches!(last_error.as_ref().unwrap(), DydxServiceError::ClientError(NodeError::General(_))) {
+                        continue;
+                    }
+                    break;
+                }
+            }
+        }
+        
+        Err(last_error.unwrap_or_else(|| DydxServiceError::ClientError(
+            NodeError::General(anyhow::Error::msg("Maximum retry attempts reached"))
+        )))
+    }
+
+    // Move the original place_trade logic to a new function
+    async fn try_place_trade(&mut self, request: TradeRequest, leverage: f64) -> Result<(String, OrderId), DydxServiceError> {
         // Format the asset ticker correctly
         let formatted_ticker = if !request.asset.contains("-USD") {
             format!("{}-USD", request.asset)
@@ -157,7 +192,7 @@ impl DydxService {
             .map_err(|e| DydxServiceError::InvalidParameters(format!("Invalid size: {}", e)))?;
         
         // Build the order based on type
-        let (_, order) = match request.order_type {
+        let (order_id, order) = match request.order_type {
             OrderType::Market => {
                 // Get current block height for market orders
                 let current_block_height = self.node_client.lock().unwrap()
@@ -180,7 +215,7 @@ impl DydxService {
                 let price_bd = BigDecimal::from_str(&price.to_string())
                     .map_err(|e| DydxServiceError::InvalidParameters(format!("Invalid price: {}", e)))?;
 
-                OrderBuilder::new(market.clone(), subaccount)
+                let (id, ord) = OrderBuilder::new(market.clone(), subaccount)
                     .limit(
                         side,
                         price_bd,
@@ -190,7 +225,8 @@ impl DydxService {
                     .reduce_only(request.reduce_only)
                     .long_term()
                     .until(Utc::now() + TimeDelta::days(28))
-                    .build(rand::random::<u32>())?
+                    .build(rand::random::<u32>())?;
+                (id, ord)
             },
             unsupported_type => {
                 return Err(DydxServiceError::InvalidParameters(
@@ -201,14 +237,14 @@ impl DydxService {
 
         // Place the order with timeout
         let tx_hash = tokio::time::timeout(
-            std::time::Duration::from_secs(30),  // 30 second timeout
+            std::time::Duration::from_secs(30),
             self.node_client.lock().unwrap().place_order(&mut self.account, order)
         ).await
         .map_err(|_| DydxServiceError::ClientError(NodeError::General(
             anyhow::Error::msg("Order placement timed out after 30 seconds")
         )))??;
 
-        Ok(tx_hash.to_string())
+        Ok((tx_hash.to_string(), order_id))
     }
 
     /// Get all open orders for the account
@@ -274,33 +310,16 @@ impl DydxService {
         Ok(())
     }
 
-    pub async fn cancel_order(&mut self, order_id: String) -> Result<String, DydxServiceError> {
+    pub async fn cancel_order(&mut self, order_id: OrderId) -> Result<String, DydxServiceError> {
         let mut node_client = self.node_client.lock().unwrap();
-        
         let current_block_height = node_client.get_latest_block_height().await?;
         
-        let client_id = order_id.parse::<u32>()
-            .map_err(|e| DydxServiceError::ParseError(format!("Failed to parse order ID: {}", e)))?;
-        
-        let subaccount = self.account.subaccount(0)?;
-        let subaccount_id = Some(dydx_proto::dydxprotocol::subaccounts::SubaccountId {
-            owner: subaccount.address.to_string(),
-            number: subaccount.number.value(),
-        });
-
-        let order_id = OrderId {
-            subaccount_id,
-            client_id,
-            order_flags: 0,
-            clob_pair_id: 0,
-        };
-
-        // Cancel the order
+        // Cancel the order directly using the OrderId
         let tx_hash = node_client
             .cancel_order(
                 &mut self.account,
                 order_id,
-                current_block_height.ahead(5),
+                current_block_height.ahead(10),
             )
             .await?;
 
@@ -311,10 +330,19 @@ impl DydxService {
         &mut self, 
         market: String,
         position_size: f64
-    ) -> Result<String, DydxServiceError> {
+    ) -> Result<(String, OrderId), DydxServiceError> {
+        let subaccount = self.account.subaccount(0)?;
+        let ticker = Ticker::from(market.as_str());
+        
+        // Get market data
+        let market = self.indexer_client
+            .markets()
+            .get_perpetual_market(&ticker)
+            .await?;
+
         // Create a market order in the opposite direction
         let request = TradeRequest {
-            asset: market.clone(),
+            asset: market.ticker.to_string(),
             is_buy: position_size < 0.0, // If short position, need to buy to close
             size: position_size.abs(),
             price: None, // Market order
@@ -324,22 +352,5 @@ impl DydxService {
         };
 
         self.place_trade(request, 1.0).await
-    }
-
-    pub async fn cancel_all_orders(&mut self, subaccount: Subaccount) -> Result<Vec<String>, DydxServiceError> {
-        let open_orders = self.get_open_orders(subaccount).await?;
-        let mut cancelled_tx_hashes = Vec::new();
-
-        for order in open_orders {
-            match self.cancel_order(order.client_id.to_string()).await {
-                Ok(tx_hash) => cancelled_tx_hashes.push(tx_hash),
-                Err(e) => {
-                    error!("Failed to cancel order {}: {:?}", order.client_id, e);
-                    continue;
-                }
-            }
-        }
-
-        Ok(cancelled_tx_hashes)
     }
 }
