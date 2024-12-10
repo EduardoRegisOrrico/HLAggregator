@@ -1,6 +1,4 @@
 use tokio_tungstenite::{connect_async, WebSocketStream};
-use url::Url;
-use futures::StreamExt;
 use anyhow::Result;
 
 pub struct WebSocketClient {

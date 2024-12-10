@@ -797,4 +797,15 @@ impl WalletManager {
             Err(anyhow::anyhow!("dYdX service not initialized"))
         }
     }
+
+    pub async fn close_dydx_position(&mut self, asset: String, size: f64) -> Result<String> {
+        if let Some(dydx_service) = &mut self.dydx_service {
+            // Extract just the transaction hash from the tuple
+            dydx_service.close_position(asset, size).await
+                .map(|(tx_hash, _)| tx_hash)  // Only keep the tx_hash
+                .map_err(|e| anyhow::anyhow!("Failed to close dYdX position: {}", e))
+        } else {
+            Err(anyhow::anyhow!("dYdX service not initialized"))
+        }
+    }
 }

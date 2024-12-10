@@ -255,14 +255,6 @@ struct AssetMeta {
 }
 
 #[derive(Debug, Deserialize)]
-struct MetaAndAssetCtxsResponse {
-    #[serde(flatten)]
-    meta: MetaResponse,
-    #[serde(flatten)]
-    asset_ctxs: Vec<AssetContext>,
-}
-
-#[derive(Debug, Deserialize)]
 struct AssetContext {
     #[serde(rename = "openInterest")]
     open_interest: String,

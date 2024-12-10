@@ -105,38 +105,7 @@ impl DydxService {
 
     /// Place a new order
     pub async fn place_trade(&mut self, request: TradeRequest, leverage: f64) -> Result<(String, OrderId), DydxServiceError> {
-        const MAX_RETRIES: u32 = 3;
-        const RETRY_DELAY: Duration = Duration::from_secs(2);
-        
-        let mut last_error = None;
-        
-        for attempt in 0..MAX_RETRIES {
-            if attempt > 0 {
-                tracing::warn!("Retrying order placement attempt {}/{}", attempt + 1, MAX_RETRIES);
-                sleep(RETRY_DELAY).await;
-            }
 
-            match self.try_place_trade(request.clone(), leverage).await {
-                Ok(result) => return Ok(result),
-                Err(e) => {
-                    tracing::error!("Order placement attempt {} failed: {:?}", attempt + 1, &e);
-                    last_error = Some(e);
-                    
-                    if matches!(last_error.as_ref().unwrap(), DydxServiceError::ClientError(NodeError::General(_))) {
-                        continue;
-                    }
-                    break;
-                }
-            }
-        }
-        
-        Err(last_error.unwrap_or_else(|| DydxServiceError::ClientError(
-            NodeError::General(anyhow::Error::msg("Maximum retry attempts reached"))
-        )))
-    }
-
-    // Move the original place_trade logic to a new function
-    async fn try_place_trade(&mut self, request: TradeRequest, leverage: f64) -> Result<(String, OrderId), DydxServiceError> {
         // Format the asset ticker correctly
         let formatted_ticker = if !request.asset.contains("-USD") {
             format!("{}-USD", request.asset)
@@ -204,7 +173,7 @@ impl DydxService {
                     .time_in_force(OrderTimeInForce::Ioc)
                     .reduce_only(request.reduce_only)
                     .short_term()
-                    .until(current_block_height.ahead(5))
+                    .until(current_block_height.ahead(20))
                     .build(rand::random::<u32>())?
             },
             OrderType::Limit => {
@@ -215,7 +184,7 @@ impl DydxService {
                 let price_bd = BigDecimal::from_str(&price.to_string())
                     .map_err(|e| DydxServiceError::InvalidParameters(format!("Invalid price: {}", e)))?;
 
-                let (id, ord) = OrderBuilder::new(market.clone(), subaccount)
+                OrderBuilder::new(market.clone(), subaccount)
                     .limit(
                         side,
                         price_bd,
@@ -225,8 +194,7 @@ impl DydxService {
                     .reduce_only(request.reduce_only)
                     .long_term()
                     .until(Utc::now() + TimeDelta::days(28))
-                    .build(rand::random::<u32>())?;
-                (id, ord)
+                    .build(rand::random::<u32>())?
             },
             unsupported_type => {
                 return Err(DydxServiceError::InvalidParameters(
