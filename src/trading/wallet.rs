@@ -25,18 +25,11 @@ use dydx::indexer::{IndexerConfig, RestConfig, SockConfig};
 use dydx::indexer::types::{OrderResponseObject, OrderSide, OrderType};
 use dydx::node::OrderTimeInForce;
 use num_traits::ToPrimitive;
-use dydx::indexer::Usdc;
-use rust_decimal::prelude::*;
-use bigdecimal::BigDecimal;
-use std::str::FromStr;
-use dydx::noble::NobleClient;
-use dydx::noble::NobleUsdc;
-use ethers::abi::Abi;
-use tonic::transport::{Channel, ClientTlsConfig};
-use tokio::time::Duration;
 use ethers::types::Address;
 use crate::trading::positions::Position;
 use dydx_proto::dydxprotocol::subaccounts::SubaccountId;
+use std::time::Duration;
+use dydx_proto::dydxprotocol::clob::OrderId;
 
 const ARBITRUM_RPC: &str = "https://arbitrum.llamarpc.com";
 const USDC_ADDRESS: &str = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"; // Arbitrum USDC
@@ -102,6 +95,31 @@ const CIRCLE_BRIDGE_ABI: &str = r#"[
         "type": "function"
     }
 ]"#;
+
+fn parse_order_id(order_id_str: &str) -> Result<OrderId> {
+    // Split only on the first 3 colons to handle UUID in the last part
+    let parts: Vec<&str> = order_id_str.splitn(4, ':').collect();
+    if parts.len() != 4 {
+        return Err(anyhow::anyhow!("Invalid order ID format"));
+    }
+
+    let client_id = parts[0].parse::<u32>()?;
+    let clob_pair_id = parts[1].parse::<u32>()?;
+    let order_flags = parts[2].parse::<u32>()?;
+    
+    // The last part contains the UUID - we'll use it as the subaccount ID
+    let subaccount_id = Some(SubaccountId {
+        owner: "dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957".to_string(), // Replace with actual owner
+        number: 0, // Default subaccount number
+    });
+
+    Ok(OrderId {
+        client_id,
+        order_flags,
+        clob_pair_id,
+        subaccount_id,
+    })
+}
 
 #[derive(Default)]
 pub struct WalletManager {
@@ -530,6 +548,7 @@ impl WalletManager {
         order_type: OrderType,
         time_in_force: OrderTimeInForce,
         leverage: f64,
+        cross_margin: Option<bool>,
     ) -> Result<(String, String)> {
         if let Some(ref mut dydx_service) = self.dydx_service {
             let (tx_hash, order_id) = dydx_service.place_trade(TradeRequest {
@@ -540,6 +559,7 @@ impl WalletManager {
                 order_type,
                 reduce_only: false,
                 leverage,
+                cross_margin,
             }, leverage).await?;
             
             // Format order ID as "client_id:clob_pair_id:order_flags:subaccount_id"
@@ -574,16 +594,20 @@ impl WalletManager {
                 },
             };
 
-            if let Ok(account) = dydx_wallet.account_offline(0) {
-                // Create the DydxService with proper config types
-                let service = DydxService::new(
-                    node_config,
-                    indexer_config,
-                    account
-                ).await?;
-                
-                self.dydx_service = Some(service);
-            }
+            // Connect to the node client first
+            let mut node_client = NodeClient::connect(node_config.clone()).await?;
+            
+            // Get the account with chain info instead of offline
+            let account = dydx_wallet.account(0, &mut node_client).await?;
+
+            // Create the DydxService with properly initialized account
+            let service = DydxService::new(
+                node_config,
+                indexer_config,
+                account
+            ).await?;
+            
+            self.dydx_service = Some(service);
         }
         Ok(())
     }
@@ -758,43 +782,48 @@ impl WalletManager {
     }
 
     pub async fn cancel_dydx_order(&mut self, order_id: &str) -> Result<String> {
-        if let Some(dydx_service) = &mut self.dydx_service {
-            // Parse the order_id string into OrderId components
-            let parts: Vec<&str> = order_id.split(':').collect();
-            if parts.len() != 4 {
-                return Err(anyhow::anyhow!("Invalid order ID format"));
-            }
-            
-            let client_id = parts[0].parse::<u32>()
-                .map_err(|_| anyhow::anyhow!("Invalid client ID"))?;
-            let clob_pair_id = parts[1].parse::<u32>()
-                .map_err(|_| anyhow::anyhow!("Invalid CLOB pair ID"))?;
-            let order_flags = parts[2].parse::<u32>()
-                .map_err(|_| anyhow::anyhow!("Invalid order flags"))?;
-            let subaccount_id = parts[3].parse::<u32>()
-                .map_err(|_| anyhow::anyhow!("Invalid subaccount ID"))?;
+        let log_path = "./logs/trading.log";
+        let mut log_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)?;
 
-            // Create the OrderId struct with all required fields
-            let order_id = dydx::node::OrderId {
-                client_id,
-                clob_pair_id,
-                order_flags,
-                subaccount_id: Some(SubaccountId {
-                    owner: self.dydx_wallet
-                        .as_ref()
-                        .unwrap()
-                        .account_offline(0)
-                        .unwrap()
-                        .address()
-                        .to_string(),
-                    number: subaccount_id,
-                }),
+        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        writeln!(log_file, "\n=== Cancel Order Operation Started at {} ===", timestamp)?;
+        writeln!(log_file, "Attempting to cancel order ID: {}", order_id)?;
+
+        if let Some(dydx_service) = &mut self.dydx_service {
+            // Parse the order ID
+            let parsed_order_id = match parse_order_id(order_id) {
+                Ok(id) => {
+                    writeln!(log_file, "Successfully parsed order ID: {:?}", id)?;
+                    id
+                },
+                Err(e) => {
+                    writeln!(log_file, "Failed to parse order ID: {}", e)?;
+                    return Err(e);
+                }
             };
 
-            dydx_service.cancel_order(order_id).await
-                .map_err(|e| anyhow::anyhow!("Failed to cancel dYdX order: {}", e))
+            // Attempt to cancel the order with proper parameters
+            writeln!(log_file, "Sending cancel request to dYdX...")?;
+            match dydx_service.cancel_order(parsed_order_id).await {
+                Ok(tx_hash) => {
+                    writeln!(log_file, "Cancel order transaction hash: {}", tx_hash)?;
+                    writeln!(log_file, "=== Cancel Order Operation Completed Successfully ===\n")?;
+                    Ok(tx_hash)
+                },
+                Err(e) => {
+                    writeln!(log_file, "Failed to cancel order: {}", e)?;
+                    writeln!(log_file, "=== Cancel Order Operation Failed ===\n")?;
+                    Err(anyhow::anyhow!("Failed to cancel order: {}", e))
+                }
+            }
         } else {
-            Err(anyhow::anyhow!("dYdX service not initialized"))
+            let error = "dYdX service not initialized";
+            writeln!(log_file, "Error: {}", error)?;
+            writeln!(log_file, "=== Cancel Order Operation Failed ===\n")?;
+            Err(anyhow::anyhow!(error))
         }
     }
 

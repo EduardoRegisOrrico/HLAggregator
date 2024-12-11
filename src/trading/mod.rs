@@ -20,7 +20,7 @@ pub struct TradeRequest {
     pub usd_value: f64,
     pub price: Option<f64>,
     pub leverage: u32,
-    pub cross_margin: bool,
+    pub cross_margin: Option<bool>,
     pub reduce_only: bool,
 }
 

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::trading::positions::Position;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LeverageInfo {
@@ -37,4 +38,5 @@ pub struct MarketData {
     pub orderbook: Option<OrderBook>,
     pub summary: Option<MarketSummary>,
     pub last_update: Option<std::time::Instant>,
+    pub positions: Vec<Position>,
 }

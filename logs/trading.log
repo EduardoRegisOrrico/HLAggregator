@@ -1,271 +1,58 @@
-2024-12-10T14:23:26.414716Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:23:26.415227Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:23:26.415473Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:23:26.415647Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:24:03.529655Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 1 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
+2024-12-11T01:45:47.022803Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:152: WebSocket interaction failed: WebSocket protocol error: Connection reset without closing handshake. Attempting reconnection...    
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:24:06.735143Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 2 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
+=== Cancel Order Operation Started at 2024-12-10 22:50:19 ===
+Attempting to cancel order ID: 2122902314:0:64:d2aec76b-1a99-5421-902b-0e51b2c27025
+Failed to parse order ID: invalid digit found in string
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:24:09.840595Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 3 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
+=== Cancel Order Operation Started at 2024-12-10 22:54:12 ===
+Attempting to cancel order ID: 2122902314:0:64:d2aec76b-1a99-5421-902b-0e51b2c27025
+Successfully parsed order ID: OrderId { subaccount_id: Some(SubaccountId { owner: "dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957", number: 0 }), client_id: 2122902314, order_flags: 64, clob_pair_id: 0 }
+Sending cancel request to dYdX...
+Failed to cancel order: Client error: Broadcast error: Broadcast error Some(3001) with log: stateful cancellation goodTilBlockTime cannot be 0, {SubaccountId:{Owner:dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957 Number:0} ClientId:2122902314 OrderFlags:64 ClobPairId:0}: Invalid order goodTilBlockTime
+=== Cancel Order Operation Failed ===
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:26:54.970110Z ERROR ThreadId(05) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:27:06.130220Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:27:20.699317Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:27:20.699537Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:28:05.522147Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:28:05.522337Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:28:33.385507Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T14:31:01.495637Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:31:15.529308Z ERROR ThreadId(13) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:31:29.998561Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:31:29.998825Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:32:42.171439Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 1 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
+2024-12-11T02:01:54.572924Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:142: Connection failed: HTTP error: 502 Bad Gateway    
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:32:46.645257Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 2 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
+=== Cancel Order Operation Started at 2024-12-10 23:03:16 ===
+Attempting to cancel order ID: 2122902314:0:64:d2aec76b-1a99-5421-902b-0e51b2c27025
+Successfully parsed order ID: OrderId { subaccount_id: Some(SubaccountId { owner: "dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957", number: 0 }), client_id: 2122902314, order_flags: 64, clob_pair_id: 0 }
+Sending cancel request to dYdX...
+Failed to cancel order: Client error: Broadcast error: Broadcast error Some(3001) with log: stateful cancellation goodTilBlockTime cannot be 0, {SubaccountId:{Owner:dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957 Number:0} ClientId:2122902314 OrderFlags:64 ClobPairId:0}: Invalid order goodTilBlockTime
+=== Cancel Order Operation Failed ===
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:32:50.351129Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 3 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:33:25.001252Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:33:25.001751Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:33:25.002111Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:33:25.002248Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:33:25.002339Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:33:25.002456Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:33:25.002587Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:33:25.002715Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:33:29.078490Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:34:53.845081Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:35:09.991648Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:35:09.992090Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:41:54.795500Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:43:20.269274Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 1 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
+=== Cancel Order Operation Started at 2024-12-10 23:10:16 ===
+Attempting to cancel order ID: 2122902314:0:64:d2aec76b-1a99-5421-902b-0e51b2c27025
+Successfully parsed order ID: OrderId { subaccount_id: Some(SubaccountId { owner: "dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957", number: 0 }), client_id: 2122902314, order_flags: 64, clob_pair_id: 0 }
+Sending cancel request to dYdX...
+Cancel order transaction hash: 3C3F1E268306F5D0DAFA664C0422FD62FCEF57C651F0C0DEFA96F8005E6FD6E9
+=== Cancel Order Operation Completed Successfully ===
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:43:23.409939Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 2 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:43:26.789210Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 3 failed: ClientError(General(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
+=== Cancel Order Operation Started at 2024-12-10 23:14:39 ===
+Attempting to cancel order ID: 4189490434:0:64:d2aec76b-1a99-5421-902b-0e51b2c27025
+Successfully parsed order ID: OrderId { subaccount_id: Some(SubaccountId { owner: "dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957", number: 0 }), client_id: 4189490434, order_flags: 64, clob_pair_id: 0 }
+Sending cancel request to dYdX...
+Cancel order transaction hash: A6C6E6DE84EFBD1CBF064359E333CE398E450DF9A7EDD489AFC27043BF987E03
+=== Cancel Order Operation Completed Successfully ===
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size))
-2024-12-10T14:51:33.552050Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:51:33.552295Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T14:52:17.721935Z ERROR ThreadId(05) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T14:58:34.631896Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T14:59:58.997941Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:59:58.998323Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T14:59:58.998809Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T15:00:11.755248Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T15:04:16.511154Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T15:04:16.511678Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T15:04:16.512034Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T15:06:22.026907Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T15:12:37.727067Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T15:12:37.727643Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T15:12:48.187823Z ERROR ThreadId(13) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T15:43:26.333775Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T15:50:22.418283Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T15:50:22.418461Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T15:52:39.002455Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T15:52:39.002786Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T15:54:41.050866Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T15:54:41.051900Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T15:54:41.052067Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:00:24.988615Z ERROR ThreadId(01) src/trading/dydx_service.rs:122: Order placement attempt 1 failed: IndexerError(status: Unknown, message: "h2 protocol error: http2 error", details: [], metadata: MetadataMap { headers: {} }
 
-Caused by:
-    0: transport error
-    1: http2 error
-    2: connection error detected: frame with invalid size)
-2024-12-10T16:18:56.325992Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:18:56.326753Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:36:26.571908Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:36:51.868022Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:36:51.868270Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:36:51.868323Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:36:51.868357Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:36:51.868436Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:36:51.868470Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:36:51.868511Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:36:51.868548Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:38:07.428925Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:39:49.291352Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:50:10.018956Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:50:33.260922Z ERROR ThreadId(05) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:52:15.363351Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:53:16.529738Z ERROR ThreadId(13) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:142: Connection failed: HTTP error: 502 Bad Gateway    
-2024-12-10T16:53:17.885810Z ERROR ThreadId(01) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T16:53:29.308857Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:54:39.942578Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:54:44.202571Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:142: Connection failed: HTTP error: 502 Bad Gateway    
-2024-12-10T16:54:45.204196Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T16:55:15.789959Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:55:15.790623Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:55:15.790926Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:55:34.151648Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:55:34.152148Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:55:34.152264Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:56:34.255439Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:58:29.788715Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:58:29.789035Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:58:35.085233Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:58:35.085986Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:58:35.086202Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:58:35.086398Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T16:59:11.013647Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T16:59:32.139283Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T17:00:38.718752Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:00:38.718958Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:00:38.719333Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:00:38.719428Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:03:44.943879Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:05:21.025421Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:05:21.026135Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:05:21.026467Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:05:30.045354Z ERROR ThreadId(05) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:07:27.940177Z ERROR ThreadId(05) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:08:00.307779Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:08:00.308392Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:08:00.309402Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.949677Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:09:26.950041Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950116Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950200Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950272Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950330Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950378Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950475Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950540Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950593Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950644Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:09:26.950758Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.586015Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:10:20.586594Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.586758Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.586861Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.586953Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.587038Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.587124Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.587207Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.587285Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:20.587367Z ERROR ThreadId(06) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:24.960504Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:10:24.960972Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:10:24.961184Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:10:33.057585Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:10:33.057782Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:10:41.546964Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:41.547226Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("SOL-USD")) is not found!    
-2024-12-10T17:10:51.947761Z ERROR ThreadId(13) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:142: Connection failed: HTTP error: 502 Bad Gateway    
-2024-12-10T17:10:52.951872Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T17:14:29.086041Z ERROR ThreadId(05) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:14:39.054663Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:14:39.054976Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:14:39.055118Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:14:39.055257Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:14:39.055343Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:14:58.750212Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:20:06.609892Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:20:06.610472Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:20:06.610620Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:20:06.610716Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:29:38.469199Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:29:38.469759Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:29:38.470382Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:29:38.470702Z ERROR ThreadId(12) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:31:51.396692Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:32:26.208215Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:46:47.679987Z ERROR ThreadId(05) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:152: WebSocket interaction failed: IO error: Connection reset by peer (os error 104). Attempting reconnection...    
-2024-12-10T17:55:17.886031Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:55:17.886354Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T17:55:17.886780Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:55:17.886929Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:55:17.887037Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:55:17.887157Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:55:17.887251Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:55:17.887341Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:55:17.887440Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T17:56:48.828082Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:01.619978Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:01.620438Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:01.620669Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:01.620869Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:45.117049Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:45.117405Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:45.117574Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:45.117689Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:00:45.117793Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:02:19.500206Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:02:19.500338Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:04:48.878577Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
-2024-12-10T18:06:07.123724Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:06:07.124124Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:07:56.475481Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T18:08:08.967143Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T18:08:08.967486Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:08.967561Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:08.967607Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:08.967646Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:08.967700Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:08.967781Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:26.525447Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T18:08:26.526257Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:26.526604Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:26.526964Z ERROR ThreadId(02) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:35.386867Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:35.387148Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:08:35.387337Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.957169Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T18:10:17.957534Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T18:10:17.958320Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.958488Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.958593Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.958685Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.958777Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.958872Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.958963Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.959052Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.959156Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:10:17.959233Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:13:04.307487Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:14:47.563058Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T18:14:47.563557Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:14:47.563846Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:14:47.564088Z ERROR ThreadId(07) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:15:00.063102Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T18:15:00.063776Z ERROR ThreadId(09) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:16:37.080928Z ERROR ThreadId(11) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
-2024-12-10T18:19:25.916837Z ERROR ThreadId(05) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
-2024-12-10T18:21:16.939027Z ERROR ThreadId(04) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: Subscription Orders(Ticker("BTC-USD")) is not found!    
+=== Cancel Order Operation Started at 2024-12-10 23:14:47 ===
+Attempting to cancel order ID: 1647543164:0:64:d2aec76b-1a99-5421-902b-0e51b2c27025
+Successfully parsed order ID: OrderId { subaccount_id: Some(SubaccountId { owner: "dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957", number: 0 }), client_id: 1647543164, order_flags: 64, clob_pair_id: 0 }
+Sending cancel request to dYdX...
+Failed to cancel order: Client error: Broadcast error: Broadcast error Some(32) with log: account sequence mismatch, expected 111, got 110: incorrect account sequence
+=== Cancel Order Operation Failed ===
+
+
+=== Cancel Order Operation Started at 2024-12-10 23:15:00 ===
+Attempting to cancel order ID: 1647543164:0:64:d2aec76b-1a99-5421-902b-0e51b2c27025
+Successfully parsed order ID: OrderId { subaccount_id: Some(SubaccountId { owner: "dydx1phlst3f8nwdvwcdc5qj9tqpempkglp03hk6957", number: 0 }), client_id: 1647543164, order_flags: 64, clob_pair_id: 0 }
+Sending cancel request to dYdX...
+Cancel order transaction hash: 27C5B00CD23F8F64A4B4A958A58FF34F7A106516FD64ECC291D11CD2D7E95D5E
+=== Cancel Order Operation Completed Successfully ===
+
+2024-12-11T02:15:18.932038Z ERROR ThreadId(08) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:142: Connection failed: HTTP error: 502 Bad Gateway    
+2024-12-11T02:15:19.467424Z ERROR ThreadId(01) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    
+2024-12-11T02:15:28.893088Z ERROR ThreadId(03) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/connector.rs:162: WebSocket protocol failure: channel closed    
+2024-12-11T02:16:01.490161Z ERROR ThreadId(10) /home/dudi/.cargo/registry/src/index.crates.io-6f17d22bba15001f/dydx-0.1.1/src/indexer/sock/mod.rs:66: Failed sending control Terminate to WebSocket connector: channel closed    

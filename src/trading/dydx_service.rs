@@ -1,5 +1,5 @@
 use dydx::{
-    node::{NodeClient, NodeConfig, NodeError, OrderTimeInForce, Account, OrderBuilder, OrderId},
+    node::{NodeClient, NodeConfig, NodeError, OrderTimeInForce, Account, OrderBuilder, OrderId, OrderGoodUntil},
     indexer::{IndexerClient, IndexerConfig,PerpetualPositionStatus,ListPositionsOpts},
     indexer::types::{
         Subaccount, OrderSide, OrderType,
@@ -16,16 +16,16 @@ use chrono::{TimeDelta, Utc};
 use dydx::node::OrderSide as NodeOrderSide;
 use std::str::FromStr;
 use dydx::indexer::Ticker;
-use tokio::time::sleep;
+use std::ops::Div;
 use std::time::Duration;
 
 pub use dydx::indexer::PerpetualPositionResponseObject;
 pub use dydx::indexer::{RestConfig, SockConfig};
 
 pub struct DydxService {
-    node_client: Arc<Mutex<NodeClient>>,
+    pub node_client: Arc<Mutex<NodeClient>>,
     pub indexer_client: Arc<IndexerClient>,
-    account: Account,
+    pub account: Account,
 }
 
 #[derive(Debug)]
@@ -85,8 +85,8 @@ pub struct TradeRequest {
     pub order_type: OrderType,
     pub reduce_only: bool,
     pub leverage: f64,
+    pub cross_margin: Option<bool>,
 }
-
 impl DydxService {
     pub async fn new(
         node_config: NodeConfig, 
@@ -105,6 +105,8 @@ impl DydxService {
 
     /// Place a new order
     pub async fn place_trade(&mut self, request: TradeRequest, leverage: f64) -> Result<(String, OrderId), DydxServiceError> {
+        // Create subaccount from the account
+        let subaccount = self.account.subaccount(0)?;
 
         // Format the asset ticker correctly
         let formatted_ticker = if !request.asset.contains("-USD") {
@@ -133,16 +135,12 @@ impl DydxService {
         // Get market data from indexer using formatted ticker
         let market = self.indexer_client
             .markets()
-            .get_perpetual_market(&formatted_ticker.clone().into())
+            .get_perpetual_market(&Ticker::from(formatted_ticker.as_str()))
             .await
             .map_err(|e| DydxServiceError::IndexerError(
                 anyhow::anyhow!("{}\nRequest details:\n{}", e, request_details)
             ))?;
 
-        // Create subaccount from the account
-        let subaccount = self.account.subaccount(0)?;
-
-        self.set_margin_requirements(&subaccount, &formatted_ticker, leverage).await?;
         // Convert side
         let side = if request.is_buy {
             OrderSide::Buy
@@ -163,23 +161,41 @@ impl DydxService {
         // Build the order based on type
         let (order_id, order) = match request.order_type {
             OrderType::Market => {
-                // Get current block height for market orders
                 let current_block_height = self.node_client.lock().unwrap()
                     .get_latest_block_height()
                     .await?;
 
-                OrderBuilder::new(market.clone(), subaccount)
-                    .market(side, size_bd)
+                // Get market data to convert USD amount to asset quantity
+                let market_clone = market.clone();
+                let market_price = market_clone.oracle_price
+                    .ok_or_else(|| DydxServiceError::InvalidParameters("No oracle price available".to_string()))?;
+
+                let market_price_bd = BigDecimal::from_str(&market_price.to_string())?;
+                let size_in_asset = BigDecimal::from_str(&request.size.to_string())?
+                    .div(&market_price_bd);
+
+                OrderBuilder::new(market, subaccount)
+                    .market(side, size_in_asset)
                     .time_in_force(OrderTimeInForce::Ioc)
                     .reduce_only(request.reduce_only)
                     .short_term()
-                    .until(current_block_height.ahead(20))
+                    .allowed_slippage(BigDecimal::from_str("5.0").unwrap())
+                    .until(current_block_height.ahead(15))
                     .build(rand::random::<u32>())?
             },
             OrderType::Limit => {
                 let price = request.price.ok_or_else(|| 
                     DydxServiceError::InvalidParameters("Limit orders require a price".to_string())
                 )?;
+
+                // Get market data to convert USD amount to asset quantity
+                let market_clone = market.clone();
+                let market_price = market_clone.oracle_price
+                    .ok_or_else(|| DydxServiceError::InvalidParameters("No oracle price available".to_string()))?;
+
+                let market_price_bd = BigDecimal::from_str(&market_price.to_string())?;
+                let size_in_asset = BigDecimal::from_str(&request.size.to_string())?
+                    .div(&market_price_bd);
                 
                 let price_bd = BigDecimal::from_str(&price.to_string())
                     .map_err(|e| DydxServiceError::InvalidParameters(format!("Invalid price: {}", e)))?;
@@ -188,7 +204,7 @@ impl DydxService {
                     .limit(
                         side,
                         price_bd,
-                        size_bd
+                        size_in_asset
                     )
                     .time_in_force(OrderTimeInForce::Unspecified)
                     .reduce_only(request.reduce_only)
@@ -253,44 +269,41 @@ impl DydxService {
         self.node_client = Arc::new(Mutex::new(client));
     }
 
-    pub async fn set_margin_requirements(
-        &mut self,
-        subaccount: &Subaccount,
-        market: &str,
-        leverage: f64,
-    ) -> Result<(), DydxServiceError> {
-        // Convert market string to Ticker
-        let ticker = Ticker::from(market);
-
-        // Get the market data first
-        let market_data = self.indexer_client
-            .markets()
-            .get_perpetual_market(&ticker)
-            .await
-            .map_err(|e| DydxServiceError::IndexerError(e.into()))?;
-
-        // For now, we'll just validate the leverage value
-        if leverage < 1.0 {
-            return Err(DydxServiceError::InvalidParameters("Leverage must be at least 1x".to_string()));
-        }
-
-
-        Ok(())
-    }
-
     pub async fn cancel_order(&mut self, order_id: OrderId) -> Result<String, DydxServiceError> {
         let mut node_client = self.node_client.lock().unwrap();
+        
+        // Get current block height for good-til-block parameter
         let current_block_height = node_client.get_latest_block_height().await?;
         
-        // Cancel the order directly using the OrderId
+        // For long-term (stateful) orders, use timestamp
+        let good_til_block = if order_id.order_flags & 0x40 != 0 { // Check if long-term order flag is set
+            OrderGoodUntil::Time(Utc::now() + TimeDelta::days(28))
+        } else {
+            // For short-term orders, use block height
+            OrderGoodUntil::Block(current_block_height.ahead(20))
+        };
+
+        // Log the attempt
+        tracing::info!(
+            "Attempting to cancel order {:?} with good_til_block {:?}",
+            order_id,
+            good_til_block
+        );
+
+        // Cancel the order with proper parameters
         let tx_hash = node_client
             .cancel_order(
                 &mut self.account,
                 order_id,
-                current_block_height.ahead(10),
+                good_til_block
             )
             .await?;
 
+        // Wait for transaction to be included in a block
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        tracing::info!("Order cancellation tx hash: {}", tx_hash);
+        
         Ok(tx_hash.to_string())
     }
 
@@ -317,6 +330,7 @@ impl DydxService {
             order_type: OrderType::Market,
             reduce_only: true,
             leverage: 1.0, // Default leverage for closing
+            cross_margin: None,
         };
 
         self.place_trade(request, 1.0).await

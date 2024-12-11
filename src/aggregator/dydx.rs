@@ -1,8 +1,3 @@
-use tokio_tungstenite::{
-    WebSocketStream,
-    MaybeTlsStream,
-    tungstenite::Message,
-};
 use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
@@ -67,7 +62,7 @@ impl ExchangeAggregator for DydxAggregator {
             'connection_loop: loop {
                 let config = IndexerConfig {
                     rest: RestConfig {
-                        endpoint: "https://indexer.dydx.trade/v4".to_string(),
+                        endpoint: "https://indexer.dydx.trade/".to_string(),
                     },
                     sock: SockConfig {
                         endpoint: "wss://indexer.dydx.trade/v4/ws".to_string(),

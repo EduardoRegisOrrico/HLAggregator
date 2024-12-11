@@ -213,9 +213,8 @@ impl App {
             all_positions.extend(dydx_positions);
         }
 
-        // Update market data (we need to add positions field to MarketData)
-        self.positions = all_positions;  // Store positions directly in App instead of MarketData
-        
+        self.market_data.positions = all_positions.clone();
+        self.positions = all_positions;
         Ok(())
     }
 }
@@ -263,77 +262,75 @@ async fn main() -> Result<()> {
                                 },
                                 MenuOption::ViewPositions => {
                                     loop {
-                                        let mut positions = Vec::new();
-                                        
-                                        // Get dYdX positions
-                                        if let Ok(dydx_positions) = app.wallet_manager.get_dydx_positions().await {
-                                            positions.extend(dydx_positions);
+                                        // Update positions before drawing
+                                        if let Err(e) = app.update().await {
+                                            eprintln!("Error updating positions: {}", e);
                                         }
-                                        
-                                        // Get Hyperliquid positions
-                                        if let Ok(hl_positions) = app.hyperliquid_service.get_positions().await {
-                                            positions.extend(hl_positions);
-                                        }
-                                        
-                                        // Clear screen and show positions using existing display method
+
                                         terminal.clear()?;
                                         terminal.draw(|f| {
-                                            Position::display_positions(f, &positions);
+                                            Position::display_positions(f, &app.market_data.positions);
                                         })?;
 
-                                        // Handle input
-                                        if let Event::Key(key) = event::read()? {
-                                            match key.code {
-                                                KeyCode::Char('q') | KeyCode::Esc => {
-                                                    break;
-                                                }
-                                                KeyCode::Char(c) => {
-                                                    if let Ok(index) = c.to_string().parse::<usize>() {
-                                                        if index > 0 && index <= positions.len() {
-                                                            let position = &positions[index - 1];
-                                                            
-                                                            // Show confirmation prompt
-                                                            terminal.clear()?;
-                                                            terminal.draw(|f| {
-                                                                let confirm_text = format!(
-                                                                    "Are you sure you want to close {} {} position?\nSize: {}\nPnL: ${:.2}\n\nPress 'y' to confirm, any other key to cancel",
-                                                                    position.side,
-                                                                    position.asset,
-                                                                    position.size,
-                                                                    position.unrealized_pnl
-                                                                );
-                                                                let confirm = Paragraph::new(confirm_text)
-                                                                    .block(Block::default().borders(Borders::ALL).title("Confirm Close Position"));
-                                                                f.render_widget(confirm, f.size());
-                                                            })?;
-
-                                                            if let Event::Key(confirm_key) = event::read()? {
-                                                                if let KeyCode::Char('y') = confirm_key.code {
-                                                                    match position.exchange.as_str() {
-                                                                        "dYdX" => {
-                                                                            if let Err(e) = app.wallet_manager.close_dydx_position(
-                                                                                position.asset.clone(),
-                                                                                position.size
-                                                                            ).await {
-                                                                                eprintln!("Error closing dYdX position: {}", e);
+                                        // Check for input with a timeout
+                                        if event::poll(Duration::from_millis(500))? {
+                                            if let Event::Key(key) = event::read()? {
+                                                match key.code {
+                                                    KeyCode::Char('q') | KeyCode::Esc => {
+                                                        break;
+                                                    }
+                                                    KeyCode::Char(c) => {
+                                                        if let Ok(index) = c.to_string().parse::<usize>() {
+                                                            if index > 0 && index <= app.market_data.positions.len() {
+                                                                let position = &app.market_data.positions[index - 1];
+                                                                
+                                                                // Show confirmation prompt
+                                                                terminal.clear()?;
+                                                                terminal.draw(|f| {
+                                                                    let confirm_text = format!(
+                                                                        "Are you sure you want to close {} {} position?\nSize: {}\nPnL: ${:.2}\n\nPress 'y' to confirm, any other key to cancel",
+                                                                        position.side,
+                                                                        position.asset,
+                                                                        position.size,
+                                                                        position.unrealized_pnl
+                                                                    );
+                                                                    let confirm = Paragraph::new(confirm_text)
+                                                                        .block(Block::default().borders(Borders::ALL).title("Confirm Close Position"));
+                                                                    f.render_widget(confirm, f.area());
+                                                                })?;
+                                                                // Show confirmation prompt
+                                                                if let Event::Key(confirm_key) = event::read()? {
+                                                                    if let KeyCode::Char('y') = confirm_key.code {
+                                                                        match position.exchange.as_str() {
+                                                                            "dYdX" => {
+                                                                                if let Err(e) = app.wallet_manager.close_dydx_position(
+                                                                                    position.asset.clone(),
+                                                                                    position.size
+                                                                                ).await {
+                                                                                    eprintln!("Error closing dYdX position: {}", e);
+                                                                                }
                                                                             }
-                                                                        }
-                                                                        "Hyperliquid" => {
-                                                                            if let Err(e) = app.hyperliquid_service.close_position(
-                                                                                position.asset.clone(),
-                                                                                position.size
-                                                                            ).await {
-                                                                                eprintln!("Error closing Hyperliquid position: {}", e);
+                                                                            "Hyperliquid" => {
+                                                                                if let Err(e) = app.hyperliquid_service.close_position(
+                                                                                    position.asset.clone(),
+                                                                                    position.size
+                                                                                ).await {
+                                                                                    eprintln!("Error closing Hyperliquid position: {}", e);
+                                                                                }
                                                                             }
+                                                                            _ => {}
                                                                         }
-                                                                        _ => {}
+                                                                        // Force an immediate update after closing
+                                                                        if let Err(e) = app.update().await {
+                                                                            eprintln!("Error updating after position close: {}", e);
+                                                                        }
                                                                     }
                                                                 }
                                                             }
                                                         }
                                                     }
+                                                    _ => {}
                                                 }
-                                                _ => {}
                                             }
                                         }
                                     }
@@ -433,11 +430,15 @@ async fn main() -> Result<()> {
                                 MenuOption::PlaceTrade => {
                                     if let Some(exchange) = app.selected_exchange.clone() {
                                         let symbol = app.symbol.clone();
-                                        // Clear main terminal first
                                         terminal.clear()?;
                                         if let Err(e) = place_trade(&mut app, &symbol, &exchange).await {
                                             eprintln!("Error placing trade: {}", e);
                                         }
+                                        terminal.clear()?;
+                                        terminal.draw(|f| {
+                                            let block = Block::default();
+                                            f.render_widget(block, f.area());
+                                        })?;
                                     }
                                 },
                                 MenuOption::ManageWallets => {
@@ -469,6 +470,11 @@ async fn start_market_updates(aggregator: &mut DerivativesAggregator, symbol: &s
 
 async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> {
     let mut log_message = None;
+    
+    // Ensure we start with a clean terminal state
+    if let Ok(mut terminal) = app.terminal.try_lock() {
+        terminal.clear()?;
+    }
     
     loop {
         // Get latest orderbook
@@ -512,13 +518,18 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                         io::stdin().read_line(&mut leverage_input)?;
                         let leverage = leverage_input.trim().parse().unwrap_or(1);
 
-                        // Get margin mode input
-                        print!("Cross margin? (y/n): ");
-                        io::stdout().flush()?;
-                        
-                        let mut margin_input = String::new();
-                        io::stdin().read_line(&mut margin_input)?;
-                        let cross_margin = margin_input.trim().to_lowercase().starts_with('y');
+                        // Only ask for cross margin mode for Hyperliquid
+                        let cross_margin = if exchange == "Hyperliquid" {
+                            print!("Cross margin? (y/n): ");
+                            io::stdout().flush()?;
+                            
+                            let mut margin_input = String::new();
+                            io::stdin().read_line(&mut margin_input)?;
+                            Some(margin_input.trim().to_lowercase().starts_with('y'))
+                        } else {
+                            // dYdX defaults to cross margin
+                            Some(true)
+                        };
 
                         let mut price = None;
                         if matches!(order_type, OrderType::Limit) {
@@ -563,6 +574,7 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                                     dydx_order_type,
                                     OrderTimeInForce::Ioc,
                                     leverage as f64,
+                                    cross_margin,
                                 ).await
                             },
                             "Hyperliquid" => {
@@ -590,17 +602,24 @@ async fn place_trade(app: &mut App, symbol: &str, exchange: &str) -> Result<()> 
                         }
                     },
                     KeyCode::Char('5') | KeyCode::Esc | KeyCode::Char('q') => {
-                        // Clear screen before returning to main menu
+                        // Ensure clean exit from trading menu
                         if let Ok(mut terminal) = app.terminal.try_lock() {
                             terminal.clear()?;
+                            // Draw one last empty frame to ensure clean state
+                            terminal.draw(|f| {
+                                let block = Block::default();
+                                f.render_widget(block, f.area());
+                            })?;
                         }
-                        return Ok(());
+                        break;
                     },
                     _ => {}
                 }
             }
         }
     }
+    
+    Ok(())
 }
 
 fn ui(f: &mut ratatui::Frame<'_>, app: &App) {
@@ -824,7 +843,7 @@ fn display_open_orders(terminal: &mut Terminal<CrosstermBackend<Stdout>>, orders
                 Constraint::Min(0),       // Orders
                 Constraint::Length(3),    // Menu
             ].as_ref())
-            .split(f.size());
+            .split(f.area());
 
         // Title
         let title = Paragraph::new("Open Orders")
@@ -899,7 +918,7 @@ async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<
                     Constraint::Length(8),     // Options Menu
                     Constraint::Length(3),     // Input Prompt
                 ].as_ref())
-                .split(f.size());
+                .split(f.area());
 
             // Title
             let title = Paragraph::new("Wallet Management")
@@ -996,7 +1015,7 @@ async fn manage_wallets(app: &mut App, terminal: &mut Terminal<CrosstermBackend<
     terminal.draw(|f| {
         // Draw empty frame to ensure clean state
         let block = Block::default();
-        f.render_widget(block, f.size());
+        f.render_widget(block, f.area());
     })?;
 
     Ok(())

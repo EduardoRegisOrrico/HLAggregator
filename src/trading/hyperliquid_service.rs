@@ -78,18 +78,16 @@ impl HyperliquidService {
 
         // Set leverage if specified
         if request.leverage > 1 {
-            self.exchange_client
-                .update_leverage(
-                    request.leverage,
-                    &request.asset,
-                    request.cross_margin,
-                    None
-                )
-                .await?;
-        }
-
-        if request.usd_value < 10.0 {
-            return Err(anyhow::anyhow!("Minimum order size is $10"));
+            if let Some(cross_margin) = request.cross_margin {
+                self.exchange_client
+                    .update_leverage(
+                        request.leverage,
+                        &request.asset,
+                        cross_margin,
+                        None
+                    )
+                    .await?;
+            }
         }
 
         match request.order_type {
@@ -190,7 +188,7 @@ impl HyperliquidService {
             reduce_only: true,
             order_type: OrderType::Market,
             leverage: 1,
-            cross_margin: true,
+            cross_margin: Some(true),
             price: None
         };
 
