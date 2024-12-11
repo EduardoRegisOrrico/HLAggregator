@@ -387,6 +387,19 @@ async fn main() -> Result<()> {
                                                                         "dYdX" => {
                                                                             if let Err(e) = app.wallet_manager.cancel_dydx_order(&order.order_id).await {
                                                                                 eprintln!("Error canceling dYdX order: {}", e);
+                                                                            } else {
+                                                                                // Wait a moment for the cancellation to propagate
+                                                                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                                                                
+                                                                                // Refresh orders list
+                                                                                orders.clear();
+                                                                                if let Ok(dydx_orders) = app.wallet_manager.get_dydx_orders().await {
+                                                                                    let open_orders: Vec<_> = dydx_orders.into_iter()
+                                                                                        .filter_map(|order| Order::from_dydx_order(&order).ok())
+                                                                                        .filter(|order| order.status == "Open")
+                                                                                        .collect();
+                                                                                    orders.extend(open_orders);
+                                                                                }
                                                                             }
                                                                         },
                                                                         "Hyperliquid" => {
@@ -395,6 +408,18 @@ async fn main() -> Result<()> {
                                                                                 order.asset.clone()
                                                                             ).await {
                                                                                 eprintln!("Error canceling Hyperliquid order: {}", e);
+                                                                            } else {
+                                                                                // Wait a moment for the cancellation to propagate
+                                                                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                                                                
+                                                                                // Refresh orders list
+                                                                                orders.clear();
+                                                                                if let Ok(hl_orders) = app.hyperliquid_service.get_open_orders().await {
+                                                                                    let converted_orders: Vec<_> = hl_orders.into_iter()
+                                                                                        .filter_map(|order| Order::from_hl_order(&order).ok())
+                                                                                        .collect();
+                                                                                    orders.extend(converted_orders);
+                                                                                }
                                                                             }
                                                                         },
                                                                         _ => {}

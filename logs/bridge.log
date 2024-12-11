@@ -1,0 +1,22 @@
+
+=== Bridge Operation Started at 2024-12-11 00:11:16 ===
+ETH Wallet Address: 0xe98e…0dbc
+Amount to Bridge: 3 USDC
+Connected to Arbitrum RPC: https://arbitrum.llamarpc.com
+USDC Contract Address: 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+Circle Bridge Address: 0x19330d10d9cc8751218eaf51e8885d058642e08a
+Amount in USDC (with 6 decimals): 3000000
+Current USDC Allowance: 0
+Insufficient allowance. Current: 0, Required: 3000000
+Approving USDC spend...
+
+=== Bridge Operation Started at 2024-12-11 00:12:18 ===
+ETH Wallet Address: 0xe98e…0dbc
+Amount to Bridge: 3 USDC
+Connected to Arbitrum RPC: https://arbitrum.llamarpc.com
+USDC Contract Address: 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+Circle Bridge Address: 0x19330d10d9cc8751218eaf51e8885d058642e08a
+Amount in USDC (with 6 decimals): 3000000
+Current USDC Allowance: 0
+Insufficient allowance. Current: 0, Required: 3000000
+Approving USDC spend...
